@@ -8,6 +8,7 @@ export type MessageType =
   | "STOP_SOLVER"
   | "START_WATCHER"
   | "STOP_WATCHER"
+  | "START_MODULE_SKIP"
   | "GET_STATUS"
   | "UPDATE_PROGRESS"
   | "PROGRESS_UPDATE"
@@ -138,6 +139,7 @@ export interface CourseDetectedMessage extends BaseMessage {
     | "reading"
     | "programming"
     | "peer-review"
+    | "module"
     | "unknown";
 }
 
@@ -152,11 +154,19 @@ export interface InjectUIMessage extends BaseMessage {
   type: "INJECT_UI";
 }
 
+export interface StartModuleSkipMessage extends BaseMessage {
+  type: "START_MODULE_SKIP";
+  courseId: string;
+  courseSlug: string;
+  moduleNumber: number;
+}
+
 export type Message =
   | StartSolverMessage
   | StopSolverMessage
   | StartWatcherMessage
   | StopWatcherMessage
+  | StartModuleSkipMessage
   | GetStatusMessage
   | UpdateProgressMessage
   | ProgressUpdateMessage

@@ -12,8 +12,10 @@ export interface CourseInfo {
     | "reading"
     | "programming"
     | "peer-review"
+    | "module"
     | "unknown";
   url: string;
+  moduleNumber?: number; // For module pages
 }
 
 /**
@@ -66,6 +68,30 @@ export function detectCourseInfo(): CourseInfo | null {
     const match = url.match(/\/supplement\/([^\/]+)/);
     itemId = match ? match[1] : "";
   }
+  // Module: /home/module/{moduleNumber}
+  else if (url.includes("/home/module/")) {
+    itemType = "module";
+    const match = url.match(/\/home\/module\/(\d+)/);
+    console.log("[Course Detection] Module URL detected:", {
+      url,
+      match,
+      courseSlug,
+    });
+    if (match) {
+      const moduleNumber = parseInt(match[1]);
+      const result = {
+        courseId: courseSlug,
+        itemId: `module-${moduleNumber}`,
+        itemType: "module" as const,
+        url,
+        moduleNumber,
+      };
+      console.log("[Course Detection] Module info extracted:", result);
+      return result;
+    } else {
+      console.warn("[Course Detection] Module URL match failed");
+    }
+  }
   // Generic item: /item/{itemId}
   else if (url.includes("/item/")) {
     const match = url.match(/\/item\/([^\/]+)/);
@@ -105,8 +131,23 @@ export function isActionableCourseItem(): boolean {
     url.includes("/peer/") ||
     url.includes("/lecture/") ||
     url.includes("/supplement/") ||
-    url.includes("/item/")
+    url.includes("/item/") ||
+    url.includes("/home/module/")
   );
+}
+
+/**
+ * Check if current page is a module overview page
+ */
+export function isModulePage(): boolean {
+  const url = window.location.href;
+  const isModule = url.includes("/home/module/");
+  console.log("[Course Detection] isModulePage check:", {
+    url,
+    isModule,
+    pathname: window.location.pathname,
+  });
+  return isModule;
 }
 
 /**

@@ -59,17 +59,18 @@ export async function showNotification(
  * Show completion notification with optional sound
  */
 export async function showCompletionNotification(
-  itemType: "assessment" | "video",
+  itemType: "assessment" | "video" | "module",
   itemName?: string
 ): Promise<void> {
-  const title = `✓ ${
-    itemType === "assessment" ? "Assessment" : "Video"
-  } Completed`;
+  let typeLabel = "Item";
+  if (itemType === "assessment") typeLabel = "Assessment";
+  else if (itemType === "video") typeLabel = "Video";
+  else if (itemType === "module") typeLabel = "Module";
+
+  const title = `✓ ${typeLabel} Completed`;
   const message = itemName
     ? `Successfully completed: ${itemName}`
-    : `${
-        itemType === "assessment" ? "Assessment" : "Video"
-      } completed successfully`;
+    : `${typeLabel} completed successfully`;
 
   await showNotification({
     title,

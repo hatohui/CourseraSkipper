@@ -16,6 +16,7 @@ import {
   detectCourseInfo,
   isCourseraCoursePage,
   isActionableCourseItem,
+  isModulePage,
   extractCSRFToken,
   extractAuthCookie,
   getCourseMetadata,
@@ -27,6 +28,8 @@ import {
   getCourseId,
   generateCsrfToken,
   markReadingComplete,
+  getModuleData,
+  ModuleData,
 } from "../utils/coursera-api";
 import { saveSessionToken } from "../utils/storage";
 
@@ -42,9 +45,17 @@ class ContentScript {
 
   private async init() {
     console.log("[Coursera Skipper] Content script loaded");
+    console.log("[Coursera Skipper] URL:", window.location.href);
+    console.log("[Coursera Skipper] Is course page:", isCourseraCoursePage());
+    console.log(
+      "[Coursera Skipper] Is actionable item:",
+      isActionableCourseItem()
+    );
+    console.log("[Coursera Skipper] Is module page:", isModulePage());
 
     // Check if we're on a course page
     if (!isCourseraCoursePage()) {
+      console.log("[Coursera Skipper] Not a course page, exiting");
       return;
     }
 
@@ -68,11 +79,16 @@ class ContentScript {
       })
     );
 
-    // Only inject UI on actionable item pages (not module overview)
+    // Inject UI on actionable item pages (including module overview)
     if (isActionableCourseItem()) {
-      this.injectUI();
+      if (isModulePage()) {
+        // Handle module page differently
+        this.handleModulePage();
+      } else {
+        this.injectUI();
+      }
     } else {
-      console.log("[Coursera Skipper] Module overview page - no UI injected");
+      console.log("[Coursera Skipper] Non-actionable page - no UI injected");
     }
   }
 
@@ -644,6 +660,376 @@ class ContentScript {
     const minutes = Math.floor(seconds / 60);
     const secs = seconds % 60;
     etaElement.textContent = `~${minutes}m ${secs}s remaining`;
+  }
+
+  private async handleModulePage() {
+    console.log("[Coursera Skipper] Module page detected");
+    console.log("[Coursera Skipper] Current URL:", window.location.href);
+
+    const courseInfo = detectCourseInfo();
+    console.log("[Coursera Skipper] Course info:", courseInfo);
+
+    if (!courseInfo || !courseInfo.moduleNumber) {
+      console.error("[Coursera Skipper] Could not detect module number", {
+        courseInfo,
+        hasModuleNumber: courseInfo?.moduleNumber,
+      });
+      return;
+    }
+
+    // Create module skip UI
+    this.injectModuleSkipUI(courseInfo.courseId, courseInfo.moduleNumber);
+
+    // Fetch module data
+    try {
+      const moduleData = await getModuleData(
+        courseInfo.courseId,
+        courseInfo.moduleNumber
+      );
+
+      if (!moduleData) {
+        console.error("[Coursera Skipper] Could not fetch module data");
+        return;
+      }
+
+      console.log("[Coursera Skipper] Module data:", moduleData);
+
+      // Update UI with module data
+      this.updateModuleSkipUI(moduleData);
+    } catch (error) {
+      console.error("[Coursera Skipper] Error fetching module data:", error);
+    }
+  }
+
+  private injectModuleSkipUI(courseId: string, moduleNumber: number) {
+    // Remove existing UI if any
+    const existing = document.querySelector(".cs-module-skip-widget");
+    if (existing) {
+      existing.remove();
+    }
+
+    // Create module skip widget
+    const widget = document.createElement("div");
+    widget.className = "cs-module-skip-widget";
+    widget.innerHTML = `
+      <div class="cs-module-skip-header">
+        <h3>📚 Module ${moduleNumber} Skipper</h3>
+        <button class="cs-module-close" title="Close">&times;</button>
+      </div>
+      <div class="cs-module-skip-body">
+        <div class="cs-module-loading">
+          <div class="cs-spinner"></div>
+          <p>Loading module data...</p>
+        </div>
+        <div class="cs-module-stats" style="display: none;">
+          <h4>Module Contents:</h4>
+          <div class="cs-stats-grid">
+            <div class="cs-stat-item">
+              <span class="cs-stat-icon">📹</span>
+              <span class="cs-stat-count" data-type="video">0</span>
+              <span class="cs-stat-label">Videos</span>
+            </div>
+            <div class="cs-stat-item">
+              <span class="cs-stat-icon">📖</span>
+              <span class="cs-stat-count" data-type="reading">0</span>
+              <span class="cs-stat-label">Readings</span>
+            </div>
+            <div class="cs-stat-item">
+              <span class="cs-stat-icon">✍️</span>
+              <span class="cs-stat-count" data-type="quiz">0</span>
+              <span class="cs-stat-label">Quizzes</span>
+            </div>
+            <div class="cs-stat-item">
+              <span class="cs-stat-icon">💻</span>
+              <span class="cs-stat-count" data-type="programming">0</span>
+              <span class="cs-stat-label">Programming</span>
+            </div>
+          </div>
+          <button class="cs-module-skip-btn">
+            <span class="cs-btn-icon">⚡</span>
+            <span class="cs-btn-text">Skip All Items</span>
+          </button>
+          <p class="cs-module-note">This will automatically complete all items in this module</p>
+        </div>
+      </div>
+    `;
+
+    // Add styles
+    const style = document.createElement("style");
+    style.textContent = `
+      .cs-module-skip-widget {
+        position: fixed;
+        top: 100px;
+        right: 20px;
+        width: 320px;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        z-index: 999999;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        animation: slideIn 0.3s ease-out;
+      }
+      
+      @keyframes slideIn {
+        from { transform: translateX(400px); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+      }
+      
+      .cs-module-skip-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 16px 20px;
+        border-radius: 12px 12px 0 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      
+      .cs-module-skip-header h3 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 600;
+      }
+      
+      .cs-module-close {
+        background: rgba(255,255,255,0.2);
+        border: none;
+        color: white;
+        font-size: 24px;
+        cursor: pointer;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.2s;
+      }
+      
+      .cs-module-close:hover {
+        background: rgba(255,255,255,0.3);
+      }
+      
+      .cs-module-skip-body {
+        padding: 20px;
+      }
+      
+      .cs-module-loading {
+        text-align: center;
+        padding: 20px;
+      }
+      
+      .cs-spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #667eea;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 16px;
+      }
+      
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      
+      .cs-module-loading p {
+        margin: 0;
+        color: #666;
+        font-size: 14px;
+      }
+      
+      .cs-module-stats h4 {
+        margin: 0 0 16px 0;
+        font-size: 14px;
+        font-weight: 600;
+        color: #333;
+      }
+      
+      .cs-stats-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+      
+      .cs-stat-item {
+        background: #f8f9fa;
+        padding: 12px;
+        border-radius: 8px;
+        text-align: center;
+      }
+      
+      .cs-stat-icon {
+        font-size: 24px;
+        display: block;
+        margin-bottom: 4px;
+      }
+      
+      .cs-stat-count {
+        display: block;
+        font-size: 20px;
+        font-weight: 700;
+        color: #667eea;
+        margin-bottom: 2px;
+      }
+      
+      .cs-stat-label {
+        display: block;
+        font-size: 12px;
+        color: #666;
+        font-weight: 500;
+      }
+      
+      .cs-module-skip-btn {
+        width: 100%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        padding: 14px 20px;
+        border-radius: 8px;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        transition: transform 0.2s, box-shadow 0.2s;
+        margin-bottom: 12px;
+      }
+      
+      .cs-module-skip-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+      }
+      
+      .cs-module-skip-btn:active {
+        transform: translateY(0);
+      }
+      
+      .cs-module-skip-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+      }
+      
+      .cs-btn-icon {
+        font-size: 18px;
+      }
+      
+      .cs-module-note {
+        margin: 0;
+        font-size: 12px;
+        color: #666;
+        text-align: center;
+        line-height: 1.5;
+      }
+    `;
+    document.head.appendChild(style);
+
+    // Event listeners
+    const closeBtn = widget.querySelector(".cs-module-close");
+    closeBtn?.addEventListener("click", () => {
+      widget.remove();
+    });
+
+    const skipBtn = widget.querySelector(".cs-module-skip-btn");
+    skipBtn?.addEventListener("click", () => {
+      this.startModuleSkip(courseId, moduleNumber);
+    });
+
+    document.body.appendChild(widget);
+  }
+
+  private updateModuleSkipUI(moduleData: ModuleData) {
+    const widget = document.querySelector(".cs-module-skip-widget");
+    if (!widget) return;
+
+    const loading = widget.querySelector(".cs-module-loading") as HTMLElement;
+    const stats = widget.querySelector(".cs-module-stats") as HTMLElement;
+
+    // Hide loading, show stats
+    if (loading) loading.style.display = "none";
+    if (stats) stats.style.display = "block";
+
+    // Update counts
+    const videoCount = widget.querySelector(
+      '[data-type="video"]'
+    ) as HTMLElement;
+    const readingCount = widget.querySelector(
+      '[data-type="reading"]'
+    ) as HTMLElement;
+    const quizCount = widget.querySelector('[data-type="quiz"]') as HTMLElement;
+    const programmingCount = widget.querySelector(
+      '[data-type="programming"]'
+    ) as HTMLElement;
+
+    if (videoCount) videoCount.textContent = moduleData.counts.video.toString();
+    if (readingCount)
+      readingCount.textContent = moduleData.counts.reading.toString();
+    if (quizCount) quizCount.textContent = moduleData.counts.quiz.toString();
+    if (programmingCount)
+      programmingCount.textContent = moduleData.counts.programming.toString();
+  }
+
+  private async startModuleSkip(courseSlug: string, moduleNumber: number) {
+    console.log("[Coursera Skipper] Starting module skip", {
+      courseSlug,
+      moduleNumber,
+    });
+
+    // Disable button
+    const widget = document.querySelector(".cs-module-skip-widget");
+    const skipBtn = widget?.querySelector(
+      ".cs-module-skip-btn"
+    ) as HTMLButtonElement;
+    if (skipBtn) {
+      skipBtn.disabled = true;
+      skipBtn.innerHTML = `
+        <span class="cs-spinner" style="width: 18px; height: 18px; border-width: 2px;"></span>
+        <span>Processing...</span>
+      `;
+    }
+
+    try {
+      // Get course ID
+      const courseId = await getCourseId(courseSlug);
+      if (!courseId) {
+        throw new Error("Could not get course ID");
+      }
+
+      // Send message to background to start module skip
+      const message = createMessage<any>("START_MODULE_SKIP", {
+        courseId,
+        courseSlug,
+        moduleNumber,
+      });
+
+      const response = await sendToBackground(message);
+
+      if (response.success) {
+        console.log("[Coursera Skipper] Module skip started");
+
+        // Show progress modal
+        this.showProgressModal();
+      } else {
+        throw new Error(response.error || "Failed to start module skip");
+      }
+    } catch (error: any) {
+      console.error("[Coursera Skipper] Error starting module skip:", error);
+      alert("Failed to start module skip: " + error.message);
+
+      // Re-enable button
+      if (skipBtn) {
+        skipBtn.disabled = false;
+        skipBtn.innerHTML = `
+          <span class="cs-btn-icon">⚡</span>
+          <span class="cs-btn-text">Skip All Items</span>
+        `;
+      }
+    }
   }
 
   private async handleInjectUI(message: Message): Promise<MessageResponse> {

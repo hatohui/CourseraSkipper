@@ -24,9 +24,18 @@ import {
 import { GradedSolver } from "../../feats/assetments/solver";
 import { Watcher } from "../../feats/watcher/watcher";
 import { GraphQLClient } from "../../feats/assetments/graphql-client";
+import {
+  getModuleData,
+  ModuleData,
+  getUserId,
+  markReadingComplete,
+  getVideoMetadata,
+  generateCsrfToken,
+} from "../utils/coursera-api";
+import { extractCSRFToken } from "../utils/course-detection";
 
 interface ActiveTask {
-  type: "solver" | "watcher";
+  type: "solver" | "watcher" | "module";
   tabId: number;
   courseId: string;
   itemId: string;
@@ -34,6 +43,12 @@ interface ActiveTask {
   progress: number;
   message: string;
   startTime: number;
+  moduleData?: {
+    moduleNumber: number;
+    courseSlug: string;
+    totalItems: number;
+    completedItems: number;
+  };
 }
 
 class BackgroundService {
@@ -56,6 +71,7 @@ class BackgroundService {
         STOP_SOLVER: this.handleStopSolver.bind(this),
         START_WATCHER: this.handleStartWatcher.bind(this),
         STOP_WATCHER: this.handleStopWatcher.bind(this),
+        START_MODULE_SKIP: this.handleStartModuleSkip.bind(this),
         GET_STATUS: this.handleGetStatus.bind(this),
         COURSE_DETECTED: this.handleCourseDetected.bind(this),
         LOG: this.handleLog.bind(this),
@@ -313,6 +329,9 @@ class BackgroundService {
       };
       this.activeTasks.set(taskKey, task);
 
+      // Update badge to show running
+      this.updateBadge();
+
       // Run watcher asynchronously
       this.runWatcher(taskKey, watcher).catch((err) => {
         error("Watcher error", err);
@@ -345,7 +364,7 @@ class BackgroundService {
         "completed",
         "Video completed successfully"
       );
-      
+
       // Notify content script of completion
       const task = this.activeTasks.get(taskKey);
       if (task && task.tabId) {
@@ -385,6 +404,222 @@ class BackgroundService {
     // Stop all watchers
     this.watchers.clear();
     return { success: true };
+  }
+
+  private async handleStartModuleSkip(
+    message: Message,
+    sender?: chrome.runtime.MessageSender
+  ): Promise<MessageResponse> {
+    const msg = message as any;
+    const { courseId, courseSlug, moduleNumber } = msg;
+
+    try {
+      // Get tab ID from sender
+      const tabId = sender?.tab?.id || 0;
+
+      info("Starting module skip", { courseId, courseSlug, moduleNumber });
+
+      // Fetch module data
+      const moduleData = await getModuleData(courseSlug, moduleNumber);
+      if (!moduleData) {
+        throw new Error("Could not fetch module data");
+      }
+
+      info("Module data fetched", {
+        itemCount: moduleData.items.length,
+        counts: moduleData.counts,
+      });
+
+      // Create task
+      const taskKey = `module-${courseSlug}-${moduleNumber}`;
+      const task: ActiveTask = {
+        type: "module",
+        tabId,
+        courseId,
+        itemId: `module-${moduleNumber}`,
+        status: "running",
+        progress: 0,
+        message: "Starting module skip...",
+        startTime: Date.now(),
+        moduleData: {
+          moduleNumber,
+          courseSlug,
+          totalItems: moduleData.items.length,
+          completedItems: 0,
+        },
+      };
+      this.activeTasks.set(taskKey, task);
+
+      // Update badge
+      this.updateBadge();
+
+      // Process module items asynchronously
+      this.processModuleItems(taskKey, courseSlug, courseId, moduleData).catch(
+        (err) => {
+          error("Module skip error", err);
+          this.updateTaskStatus(taskKey, "error", err.message);
+        }
+      );
+
+      return {
+        success: true,
+        data: { taskKey },
+      };
+    } catch (err: any) {
+      error("Failed to start module skip", err);
+      return {
+        success: false,
+        error: err.message || "Failed to start module skip",
+      };
+    }
+  }
+
+  private async processModuleItems(
+    taskKey: string,
+    courseSlug: string,
+    courseId: string,
+    moduleData: ModuleData
+  ): Promise<void> {
+    const task = this.activeTasks.get(taskKey);
+    if (!task || !task.moduleData) return;
+
+    try {
+      // Get user ID
+      const userId = await getUserId();
+      if (!userId) {
+        throw new Error("Could not get user ID");
+      }
+
+      const items = moduleData.items;
+      let completedCount = 0;
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+
+        // Update progress
+        const progress = Math.round(((i + 1) / items.length) * 100);
+        this.updateTaskProgress(
+          taskKey,
+          progress,
+          `Processing ${item.type}: ${item.name} (${i + 1}/${items.length})`
+        );
+
+        try {
+          // Process based on item type
+          if (item.type === "video") {
+            await this.processVideoItem(courseSlug, courseId, item.id, userId);
+          } else if (item.type === "reading") {
+            await this.processReadingItem(courseId, item.id, userId);
+          } else if (item.type === "quiz") {
+            info("Quiz item detected, skipping for now", { itemId: item.id });
+            // TODO: Implement quiz solving
+          } else if (item.type === "programming") {
+            info("Programming item detected, skipping for now", {
+              itemId: item.id,
+            });
+            // TODO: Implement programming assignment handling
+          }
+
+          completedCount++;
+          if (task.moduleData) {
+            task.moduleData.completedItems = completedCount;
+          }
+
+          // Small delay between items
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        } catch (itemError: any) {
+          warn("Failed to process item", {
+            itemId: item.id,
+            error: itemError.message,
+          });
+          // Continue with other items
+        }
+      }
+
+      // Mark as completed
+      this.updateTaskStatus(
+        taskKey,
+        "completed",
+        `Module completed! Processed ${completedCount}/${items.length} items`
+      );
+
+      info("Module skip completed", {
+        taskKey,
+        completedCount,
+        totalCount: items.length,
+      });
+
+      // Notify content script to reload page
+      if (task.tabId && task.tabId > 0) {
+        const completionMsg = createMessage("ITEM_COMPLETED", {
+          courseId: task.courseId,
+          itemId: task.itemId,
+          success: true,
+        });
+        sendToTab(task.tabId, completionMsg).catch(() => {
+          // Ignore if tab is closed
+        });
+      }
+
+      // Show completion notification
+      try {
+        await showCompletionNotification("module");
+      } catch (notifErr) {
+        // Ignore notification errors
+      }
+    } catch (err: any) {
+      error("Module processing failed", err);
+      this.updateTaskStatus(taskKey, "error", err.message);
+
+      try {
+        await showErrorNotification("Module skip failed", err.message);
+      } catch (notifErr) {
+        // Ignore notification errors
+      }
+    }
+  }
+
+  private async processVideoItem(
+    courseSlug: string,
+    courseId: string,
+    itemId: string,
+    userId: string
+  ): Promise<void> {
+    info("Processing video item", { itemId });
+
+    // Get video metadata
+    const metadata = await getVideoMetadata(courseSlug, itemId);
+    if (!metadata) {
+      throw new Error("Could not get video metadata");
+    }
+
+    // Create watcher and run it
+    const watcher = new Watcher({
+      metadata,
+      item: { id: itemId, name: "Video", timeCommitment: 0 },
+      slug: courseSlug,
+      userId,
+      courseId,
+      csrfToken: generateCsrfToken(),
+    });
+
+    await watcher.watchItem();
+    info("Video item completed", { itemId });
+  }
+
+  private async processReadingItem(
+    courseId: string,
+    itemId: string,
+    userId: string
+  ): Promise<void> {
+    info("Processing reading item", { itemId });
+
+    const success = await markReadingComplete(courseId, itemId, userId);
+    if (!success) {
+      throw new Error("Failed to mark reading as complete");
+    }
+
+    info("Reading item completed", { itemId });
   }
 
   private async handleGetStatus(message: Message): Promise<MessageResponse> {
@@ -467,12 +702,16 @@ class BackgroundService {
     task.status = status;
     task.message = message;
 
+    // Update badge
+    this.updateBadge();
+
     if (status === "completed" || status === "error") {
       // Remove task after delay
       setTimeout(() => {
         this.activeTasks.delete(taskKey);
         this.solvers.delete(taskKey);
         this.watchers.delete(taskKey);
+        this.updateBadge();
       }, 60000); // Keep for 1 minute
     }
 
@@ -513,6 +752,20 @@ class BackgroundService {
         tabId,
         count: toRemove.length,
       });
+      this.updateBadge();
+    }
+  }
+
+  private updateBadge() {
+    const runningTasks = Array.from(this.activeTasks.values()).filter(
+      (t) => t.status === "running"
+    );
+
+    if (runningTasks.length > 0) {
+      chrome.action.setBadgeText({ text: runningTasks.length.toString() });
+      chrome.action.setBadgeBackgroundColor({ color: "#4CAF50" });
+    } else {
+      chrome.action.setBadgeText({ text: "" });
     }
   }
 }

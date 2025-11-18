@@ -227,3 +227,146 @@ export function generateCsrfToken(): string {
   const randomStr = Math.random().toString(36).substring(2, 15);
   return `${timestamp}.${randomStr}`;
 }
+
+export interface ModuleItemSummary {
+  id: string;
+  name: string;
+  slug: string;
+  type:
+    | "quiz"
+    | "video"
+    | "reading"
+    | "programming"
+    | "peer-review"
+    | "unknown";
+  timeCommitment: number;
+}
+
+export interface ModuleData {
+  moduleId: string;
+  name: string;
+  slug: string;
+  items: ModuleItemSummary[];
+  counts: {
+    quiz: number;
+    video: number;
+    reading: number;
+    programming: number;
+    "peer-review": number;
+    total: number;
+  };
+}
+
+/**
+ * Get module data with all items and their types
+ */
+export async function getModuleData(
+  courseSlug: string,
+  moduleNumber: number
+): Promise<ModuleData | null> {
+  try {
+    console.log("[CourseraAPI] Fetching module data:", {
+      courseSlug,
+      moduleNumber,
+    });
+    const courseData = await getCourseData(courseSlug);
+
+    if (!courseData || !courseData.linked) {
+      console.error("[CourseraAPI] No course data or linked data");
+      return null;
+    }
+
+    console.log("[CourseraAPI] Course data received", {
+      hasModules: !!courseData.linked["onDemandCourseMaterialModules.v1"],
+      moduleCount:
+        courseData.linked["onDemandCourseMaterialModules.v1"]?.length || 0,
+    });
+
+    const modules = courseData.linked["onDemandCourseMaterialModules.v1"] || [];
+    const lessons = courseData.linked["onDemandCourseMaterialLessons.v1"] || [];
+    const items = courseData.linked["onDemandCourseMaterialItems.v2"] || [];
+
+    // Module numbers are 1-indexed, array is 0-indexed
+    const module = modules[moduleNumber - 1];
+    if (!module) {
+      console.error("[CourseraAPI] Module not found:", moduleNumber);
+      return null;
+    }
+
+    // Get all lessons for this module
+    const moduleLessons = lessons.filter((lesson: any) =>
+      module.lessonIds?.includes(lesson.id)
+    );
+
+    // Get all items for these lessons
+    const moduleItemIds = new Set<string>();
+    moduleLessons.forEach((lesson: any) => {
+      lesson.elementIds?.forEach((elementId: string) => {
+        // Element IDs are in format "itemId@version"
+        const itemId = elementId.split("@")[0];
+        moduleItemIds.add(itemId);
+      });
+    });
+
+    // Build item summaries with type detection
+    const itemSummaries: ModuleItemSummary[] = [];
+    const counts = {
+      quiz: 0,
+      video: 0,
+      reading: 0,
+      programming: 0,
+      "peer-review": 0,
+      total: 0,
+    };
+
+    for (const itemId of moduleItemIds) {
+      const item = items.find((i: any) => i.id === itemId);
+      if (!item) continue;
+
+      // Detect item type from contentSummary.typeName
+      let type: ModuleItemSummary["type"] = "unknown";
+      const typeName = item.contentSummary?.typeName?.toLowerCase() || "";
+
+      if (typeName.includes("exam") || typeName.includes("quiz")) {
+        type = "quiz";
+        counts.quiz++;
+      } else if (typeName.includes("lecture") || typeName.includes("video")) {
+        type = "video";
+        counts.video++;
+      } else if (
+        typeName.includes("supplement") ||
+        typeName.includes("reading")
+      ) {
+        type = "reading";
+        counts.reading++;
+      } else if (typeName.includes("programming")) {
+        type = "programming";
+        counts.programming++;
+      } else if (typeName.includes("peer")) {
+        type = "peer-review";
+        counts["peer-review"]++;
+      }
+
+      itemSummaries.push({
+        id: item.id,
+        name: item.name || item.originalName || "Untitled",
+        slug: item.slug,
+        type,
+        timeCommitment: item.timeCommitment || 0,
+      });
+
+      counts.total++;
+    }
+
+    return {
+      moduleId: module.id,
+      name: module.name,
+      slug: module.slug,
+      items: itemSummaries,
+      counts,
+    };
+  } catch (error) {
+    console.error("[CourseraAPI] Error getting module data:", error);
+    return null;
+  }
+}
