@@ -247,7 +247,10 @@ export function createMessageHandler(
   handlers: Partial<
     Record<
       MessageType,
-      (message: Message) => Promise<MessageResponse> | MessageResponse
+      (
+        message: Message,
+        sender?: chrome.runtime.MessageSender
+      ) => Promise<MessageResponse> | MessageResponse
     >
   >
 ): (
@@ -258,7 +261,7 @@ export function createMessageHandler(
   return (message, sender, sendResponse) => {
     const handler = handlers[message.type];
     if (handler) {
-      Promise.resolve(handler(message))
+      Promise.resolve(handler(message, sender))
         .then((response) => sendResponse(response))
         .catch((error) => {
           sendResponse({

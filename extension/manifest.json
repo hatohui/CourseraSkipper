@@ -3,7 +3,13 @@
   "name": "Coursera Skipper",
   "version": "1.0.0",
   "description": "Automatically complete Coursera course items including quizzes, videos, and readings",
-  "permissions": ["storage", "cookies", "activeTab", "scripting"],
+  "permissions": [
+    "storage",
+    "cookies",
+    "activeTab",
+    "scripting",
+    "notifications"
+  ],
   "host_permissions": ["*://*.coursera.org/*"],
   "background": {
     "service_worker": "background/service-worker.js"

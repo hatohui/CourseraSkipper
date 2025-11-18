@@ -15,10 +15,19 @@ import {
 import {
   detectCourseInfo,
   isCourseraCoursePage,
+  isActionableCourseItem,
   extractCSRFToken,
   extractAuthCookie,
   getCourseMetadata,
 } from "../utils/course-detection";
+import {
+  getUserId,
+  getVideoMetadata,
+  getItemData,
+  getCourseId,
+  generateCsrfToken,
+  markReadingComplete,
+} from "../utils/coursera-api";
 import { saveSessionToken } from "../utils/storage";
 
 class ContentScript {
@@ -55,11 +64,16 @@ class ContentScript {
         PROGRESS_UPDATE: this.handleProgressUpdate.bind(this),
         LOG: this.handleLogMessage.bind(this),
         INJECT_UI: this.handleInjectUI.bind(this),
+        ITEM_COMPLETED: this.handleItemCompleted.bind(this),
       })
     );
 
-    // Inject UI
-    this.injectUI();
+    // Only inject UI on actionable item pages (not module overview)
+    if (isActionableCourseItem()) {
+      this.injectUI();
+    } else {
+      console.log("[Coursera Skipper] Module overview page - no UI injected");
+    }
   }
 
   private async saveAuthInfo() {
@@ -86,6 +100,11 @@ class ContentScript {
     if (courseInfo) {
       this.currentCourseInfo = courseInfo;
       console.log("[Coursera Skipper] Course detected:", courseInfo);
+
+      // Inject UI if not already injected and we're on an actionable item
+      if (!this.uiInjected && isActionableCourseItem()) {
+        this.injectUI();
+      }
 
       // Notify background script
       const message = createMessage<CourseDetectedMessage>("COURSE_DETECTED", {
@@ -123,7 +142,7 @@ class ContentScript {
     });
   }
 
-  private injectUI() {
+  private async injectUI() {
     if (this.uiInjected) return;
 
     // Wait for body to be ready
@@ -133,7 +152,16 @@ class ContentScript {
     }
 
     this.createFloatingButton();
-    this.createProgressModal();
+
+    // Check if inline logs should be shown
+    const showInlineLogs = await chrome.storage.sync
+      .get("settings")
+      .then((result) => result.settings?.showInlineLogs ?? true);
+
+    if (showInlineLogs) {
+      this.createProgressModal();
+    }
+
     this.uiInjected = true;
 
     console.log("[Coursera Skipper] UI injected");
@@ -326,7 +354,9 @@ class ContentScript {
 
   private async handleButtonClick() {
     if (!this.currentCourseInfo) {
-      this.showError("No course detected. Please navigate to a course item.");
+      this.showError(
+        "No course item detected. Please navigate to a specific item (video, quiz, or reading)."
+      );
       return;
     }
 
@@ -349,28 +379,117 @@ class ContentScript {
           throw new Error(response.error || "Failed to start solver");
         }
       } else if (itemType === "video") {
-        // Start watcher
-        const videoElement = document.querySelector("video");
-        if (!videoElement) {
-          throw new Error("Video element not found");
+        // Start watcher - fetch complete metadata first
+        this.updateProgress(10, "Fetching video metadata...");
+
+        const userId = await getUserId();
+        if (!userId) {
+          throw new Error(
+            "Could not get user ID. Please ensure you're logged in."
+          );
         }
 
-        const message = createMessage("START_WATCHER", {
-          videoUrl: window.location.href,
-          duration: videoElement.duration || 0,
+        const fullCourseId = await getCourseId(courseId);
+        if (!fullCourseId) {
+          throw new Error("Could not get course ID");
+        }
+
+        const videoMetadata = await getVideoMetadata(fullCourseId, itemId);
+        if (!videoMetadata) {
+          throw new Error("Could not fetch video metadata");
+        }
+
+        const itemData = await getItemData(courseId, itemId);
+        if (!itemData) {
+          throw new Error("Could not fetch item data");
+        }
+
+        const csrfToken = extractCSRFToken() || generateCsrfToken();
+
+        console.log("[Coursera Skipper] Prepared watcher data:", {
+          slug: courseId,
+          fullCourseId,
+          itemId,
+          userId,
+          videoMetadata,
+          itemData: {
+            id: itemData.id,
+            name: itemData.name,
+            timeCommitment: itemData.timeCommitment,
+          },
         });
 
+        this.updateProgress(30, "Starting video watcher...");
+
+        const message = createMessage("START_WATCHER", {
+          metadata: videoMetadata,
+          item: {
+            id: itemData.id,
+            name: itemData.name,
+            timeCommitment: itemData.timeCommitment || 0,
+          },
+          slug: courseId,
+          userId,
+          courseId: fullCourseId,
+          csrfToken,
+        });
+
+        console.log(
+          "[Coursera Skipper] Sending START_WATCHER message to background..."
+        );
+
         const response = await sendToBackground(message);
+        console.log("[Coursera Skipper] Background response:", response);
+
         if (!response.success) {
           throw new Error(response.error || "Failed to start watcher");
+        } else {
+          console.log("[Coursera Skipper] Watcher started successfully!");
+        }
+      } else if (itemType === "reading") {
+        // Mark reading as complete
+        this.updateProgress(20, "Marking reading as complete...");
+
+        const userId = await getUserId();
+        if (!userId) {
+          throw new Error(
+            "Could not get user ID. Please ensure you're logged in."
+          );
+        }
+
+        const fullCourseId = await getCourseId(courseId);
+        if (!fullCourseId) {
+          throw new Error("Could not get course ID");
+        }
+
+        const success = await markReadingComplete(fullCourseId, itemId, userId);
+        if (success) {
+          this.updateProgress(100, "Reading completed!");
+          setTimeout(() => this.hideProgressModal(), 2000);
+        } else {
+          throw new Error("Failed to mark reading as complete");
         }
       } else {
         throw new Error(`Item type "${itemType}" is not supported yet`);
       }
     } catch (error: any) {
-      console.error("[Coursera Skipper] Error:", error);
+      console.error("[Coursera Skipper] Button click error:", error);
+      console.error("[Coursera Skipper] Error stack:", error.stack);
       this.showError(error.message || "An error occurred");
       this.updateProgress(0, `Error: ${error.message}`);
+
+      // Also log to background for centralized logging
+      try {
+        await sendToBackground(
+          createMessage("LOG", {
+            level: "error",
+            message: `Button click error: ${error.message}`,
+            data: { stack: error.stack, courseInfo: this.currentCourseInfo },
+          })
+        );
+      } catch (logError) {
+        // Ignore logging errors
+      }
     }
   }
 
@@ -461,6 +580,53 @@ class ContentScript {
       this.addLogToWidget(msg.entry);
     }
     return { success: true };
+  }
+
+  private async handleItemCompleted(
+    message: Message
+  ): Promise<MessageResponse> {
+    const msg = message as any;
+    console.log("[Coursera Skipper] Item completed:", msg);
+
+    // Hide progress modal
+    this.hideProgressModal();
+
+    // Show success message briefly before reload
+    this.showSuccessMessage("Video completed! Reloading...");
+
+    // Reload page after 1.5 seconds
+    setTimeout(() => {
+      window.location.reload();
+    }, 1500);
+
+    return { success: true };
+  }
+
+  private showSuccessMessage(message: string) {
+    // Create a temporary success message
+    const successDiv = document.createElement("div");
+    successDiv.className = "cs-success-message";
+    successDiv.textContent = message;
+    successDiv.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #4caf50;
+      color: white;
+      padding: 16px 24px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      z-index: 999999;
+      font-family: sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+    `;
+    document.body.appendChild(successDiv);
+
+    // Remove after delay
+    setTimeout(() => {
+      successDiv.remove();
+    }, 2000);
   }
 
   private updateStatusBadge(status: string) {

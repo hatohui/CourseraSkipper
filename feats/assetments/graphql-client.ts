@@ -111,11 +111,21 @@ export class GraphQLClient {
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
     try {
-      const response = await fetch(this.baseUrl, {
+      // Build URL with operation name param (matching Python implementation)
+      const url = operationName
+        ? `${this.baseUrl}?opname=${operationName}`
+        : this.baseUrl;
+
+      const response = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+          "x-coursera-application": "ondemand",
+          "x-coursera-version": "3bfd497de04ae0fef167b747fd85a6fbc8fb55df",
+          "x-requested-with": "XMLHttpRequest",
           ...this.getAuthHeaders(),
         },
         body: JSON.stringify({
@@ -241,7 +251,7 @@ export class GraphQLClient {
  */
 export function createCourseraClient(): GraphQLClient {
   return new GraphQLClient({
-    baseUrl: "https://www.coursera.org/api/graphql",
+    baseUrl: "https://www.coursera.org/graphql-gateway",
     maxRetries: 3,
     retryDelay: 1000,
     timeout: 30000,

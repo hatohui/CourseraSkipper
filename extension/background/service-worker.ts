@@ -17,6 +17,10 @@ import {
   getSessionToken,
 } from "../utils/storage";
 import { logger, info, error, warn } from "../utils/logger";
+import {
+  showCompletionNotification,
+  showErrorNotification,
+} from "../utils/notifications";
 import { GradedSolver } from "../../feats/assetments/solver";
 import { Watcher } from "../../feats/watcher/watcher";
 import { GraphQLClient } from "../../feats/assetments/graphql-client";
@@ -194,9 +198,23 @@ class BackgroundService {
       });
 
       info("Solver completed", { taskKey });
+
+      // Show completion notification (don't fail if this errors)
+      try {
+        await showCompletionNotification("assessment");
+      } catch (notifErr) {
+        // Ignore notification errors
+      }
     } catch (err: any) {
       error("Solver failed", err);
       this.updateTaskStatus(taskKey, "error", err.message);
+
+      // Show error notification (don't fail if this errors)
+      try {
+        await showErrorNotification("Solver failed", err.message);
+      } catch (notifErr) {
+        // Ignore notification errors
+      }
 
       const task = this.activeTasks.get(taskKey);
       if (task) {
@@ -250,29 +268,53 @@ class BackgroundService {
     }
   }
 
-  private async handleStartWatcher(message: Message): Promise<MessageResponse> {
+  private async handleStartWatcher(
+    message: Message,
+    sender?: chrome.runtime.MessageSender
+  ): Promise<MessageResponse> {
     const msg = message as any;
-    const { videoUrl, duration } = msg;
+    const { metadata, item, slug, userId, courseId, csrfToken } = msg;
 
     try {
-      info("Starting watcher", { videoUrl, duration });
+      // Get tab ID from sender
+      const tabId = sender?.tab?.id || 0;
 
-      // Create watcher
-      // TODO: Properly extract metadata, item, slug, userId, courseId from context
+      info("Starting watcher", { item: item?.name, courseId, tabId });
+
+      // Validate required parameters
+      if (!metadata || !item || !slug || !userId || !courseId) {
+        throw new Error("Missing required watcher parameters");
+      }
+
+      // Create watcher with proper config
       const watcher = new Watcher({
-        metadata: { can_skip: false } as any,
-        item: { name: "Video", id: "" } as any,
-        slug: "",
-        userId: "",
-        courseId: "",
+        metadata,
+        item,
+        slug,
+        userId,
+        courseId,
+        csrfToken,
       });
 
       // Store watcher
-      const taskKey = `watcher-${Date.now()}`;
+      const taskKey = `watcher-${courseId}-${item.id}`;
       this.watchers.set(taskKey, watcher);
 
+      // Create task with tab ID from sender
+      const task: ActiveTask = {
+        type: "watcher",
+        tabId: tabId,
+        courseId,
+        itemId: item.id,
+        status: "running",
+        progress: 0,
+        message: "Starting video watcher...",
+        startTime: Date.now(),
+      };
+      this.activeTasks.set(taskKey, task);
+
       // Run watcher asynchronously
-      this.runWatcher(taskKey, watcher, videoUrl, duration).catch((err) => {
+      this.runWatcher(taskKey, watcher).catch((err) => {
         error("Watcher error", err);
       });
 
@@ -289,17 +331,51 @@ class BackgroundService {
     }
   }
 
-  private async runWatcher(
-    taskKey: string,
-    watcher: Watcher,
-    videoUrl: string,
-    duration: number
-  ): Promise<void> {
+  private async runWatcher(taskKey: string, watcher: Watcher): Promise<void> {
     try {
+      this.updateTaskProgress(taskKey, 50, "Watching video...");
+
       await watcher.watchItem();
+
       info("Watcher completed", { taskKey });
+
+      // Mark as completed
+      this.updateTaskStatus(
+        taskKey,
+        "completed",
+        "Video completed successfully"
+      );
+      
+      // Notify content script of completion
+      const task = this.activeTasks.get(taskKey);
+      if (task && task.tabId) {
+        const completionMsg = createMessage("ITEM_COMPLETED", {
+          courseId: task.courseId,
+          itemId: task.itemId,
+          success: true,
+        });
+        sendToTab(task.tabId, completionMsg).catch(() => {
+          // Ignore if tab is closed
+        });
+      }
+
+      // Show completion notification (don't fail if this errors)
+      try {
+        await showCompletionNotification("video");
+      } catch (notifErr) {
+        // Ignore notification errors
+      }
     } catch (err: any) {
       error("Watcher failed", err);
+
+      this.updateTaskStatus(taskKey, "error", err.message);
+
+      // Show error notification (don't fail if this errors)
+      try {
+        await showErrorNotification("Watcher failed", err.message);
+      } catch (notifErr) {
+        // Ignore notification errors
+      }
     } finally {
       this.watchers.delete(taskKey);
     }
@@ -363,19 +439,21 @@ class BackgroundService {
     task.progress = progress;
     task.message = message;
 
-    // Notify tab
-    const progressMessage = createMessage<UpdateProgressMessage>(
-      "UPDATE_PROGRESS",
-      {
-        progress,
-        message,
-        status: task.status,
-      }
-    );
+    // Only notify tab if we have a valid tab ID
+    if (task.tabId && task.tabId > 0) {
+      const progressMessage = createMessage<UpdateProgressMessage>(
+        "UPDATE_PROGRESS",
+        {
+          progress,
+          message,
+          status: task.status,
+        }
+      );
 
-    sendToTab(task.tabId, progressMessage).catch((err) => {
-      warn("Failed to send progress update to tab", err);
-    });
+      sendToTab(task.tabId, progressMessage).catch(() => {
+        // Silently ignore messaging errors - tab might have closed
+      });
+    }
   }
 
   private updateTaskStatus(
@@ -408,9 +486,12 @@ class BackgroundService {
       }
     );
 
-    sendToTab(task.tabId, progressMessage).catch((err) => {
-      warn("Failed to send status update to tab", err);
-    });
+    // Only send if we have a valid tab ID
+    if (task.tabId && task.tabId > 0) {
+      sendToTab(task.tabId, progressMessage).catch(() => {
+        // Silently ignore - tab might have closed
+      });
+    }
   }
 
   private cleanupTasksForTab(tabId: number) {

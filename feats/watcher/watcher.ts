@@ -34,6 +34,16 @@ export class Watcher {
     this.userId = config.userId;
     this.courseId = config.courseId;
     this.csrfToken = config.csrfToken || this.generateCsrfToken();
+
+    console.log("[Watcher] Initialized with config:", {
+      itemId: this.item.id,
+      itemName: this.item.name,
+      slug: this.slug,
+      userId: this.userId,
+      courseId: this.courseId,
+      canSkip: this.metadata.can_skip,
+      trackingId: this.metadata.tracking_id,
+    });
   }
 
   /**
@@ -67,17 +77,27 @@ export class Watcher {
         contentRequestBody: {},
       };
 
+      console.log(`[Watcher] Starting video at: ${url}`);
+
       const response = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-csrf3-token": this.csrfToken,
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+          "x-coursera-application": "ondemand",
+          "x-requested-with": "XMLHttpRequest",
         },
         body: JSON.stringify(payload),
         credentials: "include",
       });
 
       if (response.status !== 200) {
+        const errorText = await response.text();
+        console.error(
+          `[Watcher] Start video failed. URL: ${url}, Status: ${response.status}, Response: ${errorText}`
+        );
         throw new Error(`Failed to start video. Status: ${response.status}`);
       }
 
@@ -99,17 +119,27 @@ export class Watcher {
         contentRequestBody: {},
       };
 
+      console.log(`[Watcher] Ending video at: ${url}`);
+
       const response = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-csrf3-token": this.csrfToken,
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+          "x-coursera-application": "ondemand",
+          "x-requested-with": "XMLHttpRequest",
         },
         body: JSON.stringify(payload),
         credentials: "include",
       });
 
       if (response.status !== 200) {
+        const errorText = await response.text();
+        console.error(
+          `[Watcher] End video failed. URL: ${url}, Status: ${response.status}, Response: ${errorText}`
+        );
         throw new Error(`Failed to end video. Status: ${response.status}`);
       }
 
@@ -139,17 +169,27 @@ export class Watcher {
         viewedUpTo: this.item.timeCommitment,
       };
 
+      console.log(`[Watcher] Updating progress at: ${url}`);
+
       const response = await fetch(url, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
           "x-csrf3-token": this.csrfToken,
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+          "x-coursera-application": "ondemand",
+          "x-requested-with": "XMLHttpRequest",
         },
         body: JSON.stringify(payload),
         credentials: "include",
       });
 
       if (response.status !== 204) {
+        const errorText = await response.text();
+        console.error(
+          `[Watcher] Update progress failed. URL: ${url}, Status: ${response.status}, Response: ${errorText}`
+        );
         throw new Error(
           `Failed to update progress. Status: ${response.status}`
         );

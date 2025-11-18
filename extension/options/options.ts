@@ -23,6 +23,13 @@ class OptionsUI {
   private debugModeToggle: HTMLInputElement;
   private delayInput: HTMLInputElement;
   private maxRetriesInput: HTMLInputElement;
+  // UI/UX preferences
+  private showNotificationsToggle: HTMLInputElement;
+  private verboseProgressToggle: HTMLInputElement;
+  private showInlineLogsToggle: HTMLInputElement;
+  private playSoundToggle: HTMLInputElement;
+  private logLevelSelect: HTMLSelectElement;
+  // Buttons
   private saveBtn: HTMLButtonElement;
   private cancelBtn: HTMLButtonElement;
   private exportBtn: HTMLButtonElement;
@@ -53,6 +60,23 @@ class OptionsUI {
     this.maxRetriesInput = document.getElementById(
       "max-retries"
     ) as HTMLInputElement;
+    // UI/UX preferences
+    this.showNotificationsToggle = document.getElementById(
+      "show-notifications"
+    ) as HTMLInputElement;
+    this.verboseProgressToggle = document.getElementById(
+      "verbose-progress"
+    ) as HTMLInputElement;
+    this.showInlineLogsToggle = document.getElementById(
+      "show-inline-logs"
+    ) as HTMLInputElement;
+    this.playSoundToggle = document.getElementById(
+      "play-sound"
+    ) as HTMLInputElement;
+    this.logLevelSelect = document.getElementById(
+      "log-level"
+    ) as HTMLSelectElement;
+    // Buttons
     this.saveBtn = document.getElementById("save-btn") as HTMLButtonElement;
     this.cancelBtn = document.getElementById("cancel-btn") as HTMLButtonElement;
     this.exportBtn = document.getElementById(
@@ -99,6 +123,12 @@ class OptionsUI {
     this.debugModeToggle.checked = settings.debugMode;
     this.delayInput.value = settings.delayBetweenQuestions.toString();
     this.maxRetriesInput.value = settings.maxRetries.toString();
+    // UI/UX preferences
+    this.showNotificationsToggle.checked = settings.showNotifications;
+    this.verboseProgressToggle.checked = settings.verboseProgress;
+    this.showInlineLogsToggle.checked = settings.showInlineLogs;
+    this.playSoundToggle.checked = settings.playSound;
+    this.logLevelSelect.value = settings.logLevel;
   }
 
   private async handleSave() {
@@ -116,6 +146,16 @@ class OptionsUI {
         debugMode: this.debugModeToggle.checked,
         delayBetweenQuestions: parseInt(this.delayInput.value),
         maxRetries: parseInt(this.maxRetriesInput.value),
+        // UI/UX preferences
+        showNotifications: this.showNotificationsToggle.checked,
+        verboseProgress: this.verboseProgressToggle.checked,
+        showInlineLogs: this.showInlineLogsToggle.checked,
+        playSound: this.playSoundToggle.checked,
+        logLevel: this.logLevelSelect.value as
+          | "debug"
+          | "info"
+          | "warn"
+          | "error",
       };
 
       // Validate settings

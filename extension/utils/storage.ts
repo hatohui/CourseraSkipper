@@ -13,6 +13,12 @@ export interface Settings {
   maxRetries: number;
   debugMode: boolean;
   temperature: number;
+  // UI/UX preferences
+  showNotifications: boolean;
+  verboseProgress: boolean;
+  showInlineLogs: boolean;
+  playSound: boolean;
+  logLevel: "debug" | "info" | "warn" | "error";
 }
 
 export interface CourseProgress {
@@ -40,6 +46,12 @@ const DEFAULT_SETTINGS: Settings = {
   maxRetries: 3,
   debugMode: false,
   temperature: 0.7,
+  // UI/UX defaults
+  showNotifications: true,
+  verboseProgress: true,
+  showInlineLogs: true,
+  playSound: false,
+  logLevel: "info",
 };
 
 /**

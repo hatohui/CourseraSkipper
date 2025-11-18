@@ -95,6 +95,21 @@ export function isCourseraCoursePage(): boolean {
 }
 
 /**
+ * Check if current page is an actionable course item (not just a module overview)
+ */
+export function isActionableCourseItem(): boolean {
+  const url = window.location.href;
+  return (
+    url.includes("/exam/") ||
+    url.includes("/programming/") ||
+    url.includes("/peer/") ||
+    url.includes("/lecture/") ||
+    url.includes("/supplement/") ||
+    url.includes("/item/")
+  );
+}
+
+/**
  * Extract CSRF token from cookies or meta tags
  */
 export function extractCSRFToken(): string | null {

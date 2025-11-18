@@ -115,6 +115,7 @@ class PopupUI {
   private async init() {
     // Load settings and data
     await this.loadSettings();
+    await this.loadLogLevel();
     await this.loadLogs();
     await this.loadHistory();
 
@@ -198,9 +199,21 @@ class PopupUI {
   }
 
   private async loadSettings() {
-    const settings = await getSettings();
-    this.autoSolveToggle.checked = settings.autoSolve;
-    this.autoWatchToggle.checked = settings.autoWatch;
+    const result = await chrome.storage.sync.get("settings");
+    const settings = result.settings || {};
+
+    this.autoSolveToggle.checked = settings.autoSolve ?? true;
+    this.autoWatchToggle.checked = settings.autoWatch ?? true;
+  }
+
+  private async loadLogLevel() {
+    const result = await chrome.storage.sync.get("settings");
+    const settings = result.settings || {};
+
+    // Set the log level filter from settings
+    const logLevel = settings.logLevel || "info";
+    this.logLevelFilter.value = logLevel;
+    this.currentLogFilter = logLevel;
   }
 
   private async handleToggleChange() {
@@ -262,13 +275,13 @@ class PopupUI {
       if (response.success && response.data) {
         const { tasks, activeCount } = response.data;
 
-        if (activeCount > 0) {
+        if (typeof activeCount === "number" && activeCount > 0) {
           this.setStatus("running", `Running (${activeCount})`);
           this.startBtn.disabled = true;
           this.stopBtn.disabled = false;
 
           // Show progress for first task
-          if (tasks.length > 0) {
+          if (Array.isArray(tasks) && tasks.length > 0) {
             const task = tasks[0];
             this.updateProgress(task);
           }
@@ -279,8 +292,8 @@ class PopupUI {
           this.hideProgress();
         }
       }
-    } catch (error) {
-      console.error("Failed to update status:", error);
+    } catch (error: any) {
+      console.error("Failed to update status:", error?.message || error);
     }
   }
 
@@ -437,6 +450,16 @@ class PopupUI {
   }
 
   private addLogEntry(entry: LogEntry) {
+    // Ensure entry has proper types
+    if (
+      !entry ||
+      typeof entry.level !== "string" ||
+      typeof entry.source !== "string"
+    ) {
+      console.error("Invalid log entry:", entry);
+      return;
+    }
+
     this.logBuffer.push(entry);
     if (this.logBuffer.length > this.MAX_LOGS) {
       this.logBuffer.shift();
@@ -452,8 +475,21 @@ class PopupUI {
   }
 
   private shouldShowLog(entry: LogEntry): boolean {
-    if (this.currentLogFilter === "all") return true;
-    return entry.level === this.currentLogFilter;
+    // Apply user's filter selection
+    if (
+      this.currentLogFilter !== "all" &&
+      entry.level !== this.currentLogFilter
+    ) {
+      return false;
+    }
+
+    // Apply minimum log level from settings
+    const levelOrder = { debug: 0, info: 1, warn: 2, error: 3 };
+    const minLevel =
+      levelOrder[this.currentLogFilter as keyof typeof levelOrder] || 0;
+    const entryLevel = levelOrder[entry.level as keyof typeof levelOrder] || 0;
+
+    return entryLevel >= minLevel;
   }
 
   private appendLogToUI(entry: LogEntry) {
