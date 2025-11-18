@@ -258,7 +258,90 @@ export interface ModuleData {
 }
 
 /**
- * Get module data with all items and their types
+ * Get guided course session progress data
+ * This API returns week/module information with all items
+ */
+async function getGuidedCourseProgress(
+  userId: string,
+  courseId: string
+): Promise<any> {
+  try {
+    const params = new URLSearchParams({
+      ids: `${userId}~${courseId}`,
+      fields: "id,weeks",
+    });
+
+    const response = await fetch(
+      `${BASE_URL}guidedCourseSessionProgresses.v1?${params}`,
+      {
+        credentials: "include",
+      }
+    );
+
+    if (!response.ok) {
+      console.error(
+        "[CourseraAPI] Failed to get guided course progress:",
+        response.status
+      );
+      return null;
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error("[CourseraAPI] Error getting guided course progress:", error);
+    return null;
+  }
+}
+
+/**
+ * Detect item type from contentSummary.typeName
+ * Based on Coursera's actual API structure
+ */
+function detectItemType(
+  typeName: string,
+  resourcePath: string
+): ModuleItemSummary["type"] {
+  const type = typeName.toLowerCase();
+
+  // Map based on contentSummary.typeName
+  if (type === "lecture") {
+    return "video";
+  } else if (type === "supplement") {
+    return "reading";
+  } else if (type === "staffgraded") {
+    return "quiz"; // Graded Assignment
+  } else if (type === "gradedlti") {
+    return "programming"; // Graded App Item
+  } else if (type === "ungradedassignment") {
+    return "quiz"; // Practice Assignment
+  } else if (type.includes("exam") || type.includes("quiz")) {
+    return "quiz";
+  } else if (type.includes("programming")) {
+    return "programming";
+  } else if (type.includes("peer")) {
+    return "peer-review";
+  }
+
+  // Fallback to path-based detection
+  const path = resourcePath.toLowerCase();
+  if (path.includes("/lecture/")) {
+    return "video";
+  } else if (path.includes("/supplement/")) {
+    return "reading";
+  } else if (path.includes("/exam/") || path.includes("/quiz/")) {
+    return "quiz";
+  } else if (path.includes("/programming/")) {
+    return "programming";
+  } else if (path.includes("/peer/")) {
+    return "peer-review";
+  }
+
+  return "unknown";
+}
+
+/**
+ * Get module data with all items and their types using the guided course progress API
  */
 export async function getModuleData(
   courseSlug: string,
@@ -269,47 +352,68 @@ export async function getModuleData(
       courseSlug,
       moduleNumber,
     });
-    const courseData = await getCourseData(courseSlug);
 
-    if (!courseData || !courseData.linked) {
-      console.error("[CourseraAPI] No course data or linked data");
+    // First get user ID
+    const userId = await getUserId();
+    if (!userId) {
+      console.error("[CourseraAPI] Could not get user ID");
       return null;
     }
 
-    console.log("[CourseraAPI] Course data received", {
-      hasModules: !!courseData.linked["onDemandCourseMaterialModules.v1"],
-      moduleCount:
-        courseData.linked["onDemandCourseMaterialModules.v1"]?.length || 0,
+    // Get course ID
+    const courseId = await getCourseId(courseSlug);
+    if (!courseId) {
+      console.error("[CourseraAPI] Could not get course ID");
+      return null;
+    }
+
+    console.log("[CourseraAPI] Fetching from guidedCourseSessionProgresses", {
+      userId,
+      courseId,
     });
 
-    const modules = courseData.linked["onDemandCourseMaterialModules.v1"] || [];
-    const lessons = courseData.linked["onDemandCourseMaterialLessons.v1"] || [];
-    const items = courseData.linked["onDemandCourseMaterialItems.v2"] || [];
+    // Get guided course progress
+    const progressData = await getGuidedCourseProgress(userId, courseId);
+    if (
+      !progressData ||
+      !progressData.elements ||
+      progressData.elements.length === 0
+    ) {
+      console.error("[CourseraAPI] No progress data found");
+      return null;
+    }
+
+    const courseProgress = progressData.elements[0];
+    if (!courseProgress.weeks || !Array.isArray(courseProgress.weeks)) {
+      console.error("[CourseraAPI] No weeks data in progress");
+      return null;
+    }
+
+    console.log("[CourseraAPI] Found weeks:", courseProgress.weeks.length);
 
     // Module numbers are 1-indexed, array is 0-indexed
-    const module = modules[moduleNumber - 1];
-    if (!module) {
-      console.error("[CourseraAPI] Module not found:", moduleNumber);
+    const weekIndex = moduleNumber - 1;
+    if (weekIndex < 0 || weekIndex >= courseProgress.weeks.length) {
+      console.error("[CourseraAPI] Module/week index out of bounds:", {
+        moduleNumber,
+        weekIndex,
+        totalWeeks: courseProgress.weeks.length,
+      });
       return null;
     }
 
-    // Get all lessons for this module
-    const moduleLessons = lessons.filter((lesson: any) =>
-      module.lessonIds?.includes(lesson.id)
-    );
+    const week = courseProgress.weeks[weekIndex];
+    console.log("[CourseraAPI] Week data:", week);
 
-    // Get all items for these lessons
-    const moduleItemIds = new Set<string>();
-    moduleLessons.forEach((lesson: any) => {
-      lesson.elementIds?.forEach((elementId: string) => {
-        // Element IDs are in format "itemId@version"
-        const itemId = elementId.split("@")[0];
-        moduleItemIds.add(itemId);
-      });
-    });
+    // Extract module information
+    const modules = week.modules || [];
+    if (modules.length === 0) {
+      console.warn("[CourseraAPI] No modules found in week");
+      return null;
+    }
 
-    // Build item summaries with type detection
-    const itemSummaries: ModuleItemSummary[] = [];
+    // Collect all items from all modules in this week
+    const allItems: ModuleItemSummary[] = [];
     const counts = {
       quiz: 0,
       video: 0,
@@ -319,50 +423,57 @@ export async function getModuleData(
       total: 0,
     };
 
-    for (const itemId of moduleItemIds) {
-      const item = items.find((i: any) => i.id === itemId);
-      if (!item) continue;
+    let moduleName = `Week ${moduleNumber}`;
+    let moduleId = "";
 
-      // Detect item type from contentSummary.typeName
-      let type: ModuleItemSummary["type"] = "unknown";
-      const typeName = item.contentSummary?.typeName?.toLowerCase() || "";
-
-      if (typeName.includes("exam") || typeName.includes("quiz")) {
-        type = "quiz";
-        counts.quiz++;
-      } else if (typeName.includes("lecture") || typeName.includes("video")) {
-        type = "video";
-        counts.video++;
-      } else if (
-        typeName.includes("supplement") ||
-        typeName.includes("reading")
-      ) {
-        type = "reading";
-        counts.reading++;
-      } else if (typeName.includes("programming")) {
-        type = "programming";
-        counts.programming++;
-      } else if (typeName.includes("peer")) {
-        type = "peer-review";
-        counts["peer-review"]++;
+    for (const module of modules) {
+      if (module.name) {
+        moduleName = module.name;
+      }
+      if (module.id) {
+        moduleId = module.id;
       }
 
-      itemSummaries.push({
-        id: item.id,
-        name: item.name || item.originalName || "Untitled",
-        slug: item.slug,
-        type,
-        timeCommitment: item.timeCommitment || 0,
-      });
+      const items = module.items || [];
+      console.log(
+        `[CourseraAPI] Module "${module.name}" has ${items.length} items`
+      );
 
-      counts.total++;
+      for (const item of items) {
+        const typeName = item.contentSummary?.typeName || "";
+        const resourcePath = item.resourcePath || "";
+        const type = detectItemType(typeName, resourcePath);
+
+        // Update counts
+        if (type === "quiz") counts.quiz++;
+        else if (type === "video") counts.video++;
+        else if (type === "reading") counts.reading++;
+        else if (type === "programming") counts.programming++;
+        else if (type === "peer-review") counts["peer-review"]++;
+
+        counts.total++;
+
+        allItems.push({
+          id: item.id || item.trackId,
+          name: item.name || "Untitled",
+          slug: item.slug || "",
+          type,
+          timeCommitment: item.timeCommitment || 0,
+        });
+      }
     }
 
+    console.log("[CourseraAPI] Module data processed:", {
+      moduleName,
+      totalItems: allItems.length,
+      counts,
+    });
+
     return {
-      moduleId: module.id,
-      name: module.name,
-      slug: module.slug,
-      items: itemSummaries,
+      moduleId: moduleId,
+      name: moduleName,
+      slug: "",
+      items: allItems,
       counts,
     };
   } catch (error) {

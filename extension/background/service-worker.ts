@@ -27,6 +27,7 @@ import { GraphQLClient } from "../../feats/assetments/graphql-client";
 import {
   getModuleData,
   ModuleData,
+  ModuleItemSummary,
   getUserId,
   markReadingComplete,
   getVideoMetadata,
@@ -493,47 +494,91 @@ class BackgroundService {
       const items = moduleData.items;
       let completedCount = 0;
 
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
+      // Separate items by type for concurrent processing
+      const videos = items.filter((item) => item.type === "video");
+      const readings = items.filter((item) => item.type === "reading");
+      const quizzes = items.filter((item) => item.type === "quiz");
+      const programming = items.filter((item) => item.type === "programming");
 
-        // Update progress
-        const progress = Math.round(((i + 1) / items.length) * 100);
+      const totalItems = items.length;
+
+      // Process videos concurrently
+      if (videos.length > 0) {
         this.updateTaskProgress(
           taskKey,
-          progress,
-          `Processing ${item.type}: ${item.name} (${i + 1}/${items.length})`
+          10,
+          `Processing ${videos.length} videos concurrently...`
         );
 
-        try {
-          // Process based on item type
-          if (item.type === "video") {
-            await this.processVideoItem(courseSlug, courseId, item.id, userId);
-          } else if (item.type === "reading") {
-            await this.processReadingItem(courseId, item.id, userId);
-          } else if (item.type === "quiz") {
-            info("Quiz item detected, skipping for now", { itemId: item.id });
-            // TODO: Implement quiz solving
-          } else if (item.type === "programming") {
-            info("Programming item detected, skipping for now", {
+        const videoPromises = videos.map(async (item) => {
+          try {
+            await this.processVideoItem(courseSlug, courseId, item, userId);
+            completedCount++;
+            if (task.moduleData) {
+              task.moduleData.completedItems = completedCount;
+            }
+            const progress = Math.round((completedCount / totalItems) * 100);
+            this.updateTaskProgress(
+              taskKey,
+              progress,
+              `Completed video: ${item.name} (${completedCount}/${totalItems})`
+            );
+          } catch (itemError: any) {
+            warn("Failed to process video", {
               itemId: item.id,
+              error: itemError.message,
             });
-            // TODO: Implement programming assignment handling
           }
+        });
 
-          completedCount++;
-          if (task.moduleData) {
-            task.moduleData.completedItems = completedCount;
+        await Promise.allSettled(videoPromises);
+        info("All videos processed", { count: videos.length });
+      }
+
+      // Process readings concurrently
+      if (readings.length > 0) {
+        this.updateTaskProgress(
+          taskKey,
+          Math.round((completedCount / totalItems) * 100),
+          `Processing ${readings.length} readings concurrently...`
+        );
+
+        const readingPromises = readings.map(async (item) => {
+          try {
+            await this.processReadingItem(courseId, item.id, userId);
+            completedCount++;
+            if (task.moduleData) {
+              task.moduleData.completedItems = completedCount;
+            }
+            const progress = Math.round((completedCount / totalItems) * 100);
+            this.updateTaskProgress(
+              taskKey,
+              progress,
+              `Completed reading: ${item.name} (${completedCount}/${totalItems})`
+            );
+          } catch (itemError: any) {
+            warn("Failed to process reading", {
+              itemId: item.id,
+              error: itemError.message,
+            });
           }
+        });
 
-          // Small delay between items
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-        } catch (itemError: any) {
-          warn("Failed to process item", {
-            itemId: item.id,
-            error: itemError.message,
-          });
-          // Continue with other items
-        }
+        await Promise.allSettled(readingPromises);
+        info("All readings processed", { count: readings.length });
+      }
+
+      // Log quizzes and programming assignments (not yet implemented)
+      if (quizzes.length > 0) {
+        info("Quiz items detected, skipping for now", {
+          count: quizzes.length,
+        });
+      }
+
+      if (programming.length > 0) {
+        info("Programming items detected, skipping for now", {
+          count: programming.length,
+        });
       }
 
       // Mark as completed
@@ -582,13 +627,17 @@ class BackgroundService {
   private async processVideoItem(
     courseSlug: string,
     courseId: string,
-    itemId: string,
+    item: { id: string; name: string; timeCommitment: number },
     userId: string
   ): Promise<void> {
-    info("Processing video item", { itemId });
+    info("Processing video item", {
+      itemId: item.id,
+      name: item.name,
+      timeCommitment: item.timeCommitment,
+    });
 
-    // Get video metadata
-    const metadata = await getVideoMetadata(courseSlug, itemId);
+    // Get video metadata - needs full courseId, not slug
+    const metadata = await getVideoMetadata(courseId, item.id);
     if (!metadata) {
       throw new Error("Could not get video metadata");
     }
@@ -596,7 +645,11 @@ class BackgroundService {
     // Create watcher and run it
     const watcher = new Watcher({
       metadata,
-      item: { id: itemId, name: "Video", timeCommitment: 0 },
+      item: {
+        id: item.id,
+        name: item.name,
+        timeCommitment: item.timeCommitment,
+      },
       slug: courseSlug,
       userId,
       courseId,
@@ -604,7 +657,7 @@ class BackgroundService {
     });
 
     await watcher.watchItem();
-    info("Video item completed", { itemId });
+    info("Video item completed", { itemId: item.id });
   }
 
   private async processReadingItem(
