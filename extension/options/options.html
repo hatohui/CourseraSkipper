@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Coursera Skipper - Settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <div class="options-container">
+      <header class="header">
+        <h1>Coursera Skipper Settings</h1>
+        <p class="subtitle">Configure your extension preferences</p>
+      </header>
+
+      <main class="content">
+        <!-- LLM Configuration -->
+        <section class="section">
+          <h2 class="section-title">LLM Configuration</h2>
+          <div class="form-group">
+            <label for="provider">AI Provider</label>
+            <select id="provider" class="input">
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic (Claude)</option>
+              <option value="google">Google (Gemini)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="api-key">API Key</label>
+            <input
+              type="password"
+              id="api-key"
+              class="input"
+              placeholder="Enter your API key"
+            />
+            <p class="help-text">
+              Your API key is stored locally and never shared.
+            </p>
+          </div>
+          <div class="form-group">
+            <label for="model">Model</label>
+            <input
+              type="text"
+              id="model"
+              class="input"
+              placeholder="e.g., gpt-4, claude-3-opus-20240229"
+            />
+          </div>
+          <div class="form-group">
+            <label for="temperature">Temperature (0-2)</label>
+            <input
+              type="number"
+              id="temperature"
+              class="input"
+              min="0"
+              max="2"
+              step="0.1"
+              value="0.7"
+            />
+            <p class="help-text">
+              Lower values make output more focused and deterministic.
+            </p>
+          </div>
+        </section>
+
+        <!-- Feature Settings -->
+        <section class="section">
+          <h2 class="section-title">Feature Settings</h2>
+          <div class="toggle-group">
+            <label class="toggle-label">
+              <div class="toggle-info">
+                <span class="toggle-title">Auto-solve Quizzes</span>
+                <span class="toggle-description"
+                  >Automatically solve quiz questions using AI</span
+                >
+              </div>
+              <div class="toggle-switch">
+                <input type="checkbox" id="auto-solve" />
+                <span class="slider"></span>
+              </div>
+            </label>
+          </div>
+          <div class="toggle-group">
+            <label class="toggle-label">
+              <div class="toggle-info">
+                <span class="toggle-title">Auto-watch Videos</span>
+                <span class="toggle-description"
+                  >Automatically complete video lectures</span
+                >
+              </div>
+              <div class="toggle-switch">
+                <input type="checkbox" id="auto-watch" />
+                <span class="slider"></span>
+              </div>
+            </label>
+          </div>
+          <div class="toggle-group">
+            <label class="toggle-label">
+              <div class="toggle-info">
+                <span class="toggle-title">Debug Mode</span>
+                <span class="toggle-description"
+                  >Enable detailed logging for troubleshooting</span
+                >
+              </div>
+              <div class="toggle-switch">
+                <input type="checkbox" id="debug-mode" />
+                <span class="slider"></span>
+              </div>
+            </label>
+          </div>
+        </section>
+
+        <!-- UI/UX Preferences -->
+        <section class="section">
+          <h2 class="section-title">UI/UX Preferences</h2>
+          <div class="toggle-group">
+            <label class="toggle-label">
+              <div class="toggle-info">
+                <span class="toggle-title">Show Progress Notifications</span>
+                <span class="toggle-description"
+                  >Display browser notifications when operations complete</span
+                >
+              </div>
+              <div class="toggle-switch">
+                <input type="checkbox" id="show-notifications" checked />
+                <span class="slider"></span>
+              </div>
+            </label>
+          </div>
+          <div class="toggle-group">
+            <label class="toggle-label">
+              <div class="toggle-info">
+                <span class="toggle-title">Verbose Progress Mode</span>
+                <span class="toggle-description"
+                  >Show detailed progress updates for each step</span
+                >
+              </div>
+              <div class="toggle-switch">
+                <input type="checkbox" id="verbose-progress" checked />
+                <span class="slider"></span>
+              </div>
+            </label>
+          </div>
+          <div class="toggle-group">
+            <label class="toggle-label">
+              <div class="toggle-info">
+                <span class="toggle-title">Show Inline Logs</span>
+                <span class="toggle-description"
+                  >Display live logs in the floating widget on Coursera
+                  pages</span
+                >
+              </div>
+              <div class="toggle-switch">
+                <input type="checkbox" id="show-inline-logs" checked />
+                <span class="slider"></span>
+              </div>
+            </label>
+          </div>
+          <div class="toggle-group">
+            <label class="toggle-label">
+              <div class="toggle-info">
+                <span class="toggle-title">Play Sound on Completion</span>
+                <span class="toggle-description"
+                  >Play a sound effect when operations complete
+                  successfully</span
+                >
+              </div>
+              <div class="toggle-switch">
+                <input type="checkbox" id="play-sound" />
+                <span class="slider"></span>
+              </div>
+            </label>
+          </div>
+          <div class="form-group">
+            <label for="log-level">Minimum Log Level</label>
+            <select id="log-level" class="input">
+              <option value="debug">Debug (Show all)</option>
+              <option value="info" selected>Info</option>
+              <option value="warn">Warnings only</option>
+              <option value="error">Errors only</option>
+            </select>
+            <p class="help-text">Control which log messages are displayed.</p>
+          </div>
+        </section>
+
+        <!-- Advanced Settings -->
+        <section class="section">
+          <h2 class="section-title">Advanced Settings</h2>
+          <div class="form-group">
+            <label for="delay">Delay Between Questions (ms)</label>
+            <input
+              type="number"
+              id="delay"
+              class="input"
+              min="0"
+              step="100"
+              value="2000"
+            />
+            <p class="help-text">Time to wait between solving questions.</p>
+          </div>
+          <div class="form-group">
+            <label for="max-retries">Max Retries</label>
+            <input
+              type="number"
+              id="max-retries"
+              class="input"
+              min="0"
+              max="10"
+              value="3"
+            />
+            <p class="help-text">
+              Maximum number of retry attempts for failed operations.
+            </p>
+          </div>
+        </section>
+
+        <!-- Actions -->
+        <section class="section">
+          <h2 class="section-title">Data Management</h2>
+          <div class="button-group">
+            <button id="export-settings" class="btn btn-outline">
+              Export Settings
+            </button>
+            <button id="import-settings" class="btn btn-outline">
+              Import Settings
+            </button>
+            <button id="clear-logs" class="btn btn-outline">Clear Logs</button>
+            <button id="reset-all" class="btn btn-danger">
+              Reset All Settings
+            </button>
+          </div>
+        </section>
+      </main>
+
+      <footer class="footer">
+        <div class="button-group">
+          <button id="save-btn" class="btn btn-primary">Save Settings</button>
+          <button id="cancel-btn" class="btn btn-secondary">Cancel</button>
+        </div>
+        <div id="status-message" class="status-message"></div>
+      </footer>
+    </div>
+
+    <script src="options.js"></script>
+  </body>
+</html>

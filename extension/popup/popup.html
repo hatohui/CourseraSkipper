@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Coursera Skipper</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="popup-container">
+      <div class="header">
+        <h1>Coursera Skipper</h1>
+        <div class="status-badge" id="status-badge">Idle</div>
+      </div>
+
+      <div class="content">
+        <div class="info-section" id="course-info">
+          <p class="info-text">Open a Coursera course to get started</p>
+        </div>
+
+        <div class="controls">
+          <button id="start-btn" class="btn btn-primary" disabled>
+            <span class="btn-icon">▶</span>
+            Start Solving
+          </button>
+          <button id="stop-btn" class="btn btn-secondary" disabled>
+            <span class="btn-icon">⏸</span>
+            Stop
+          </button>
+        </div>
+
+        <div class="progress-section hidden" id="progress-section">
+          <div class="progress-info">
+            <span class="progress-percentage" id="progress-percentage">0%</span>
+            <span class="progress-eta" id="progress-eta"></span>
+          </div>
+          <div class="progress-bar-container">
+            <div class="progress-bar-fill" id="progress-fill"></div>
+          </div>
+          <p class="progress-message" id="progress-message">Initializing...</p>
+        </div>
+
+        <div class="error-section hidden" id="error-section">
+          <div class="error-header">
+            <span class="error-icon">⚠️</span>
+            <span class="error-title">Error Occurred</span>
+          </div>
+          <p class="error-message" id="error-message"></p>
+          <div class="error-actions" id="error-actions">
+            <button class="btn btn-small btn-secondary" id="retry-btn">
+              Retry
+            </button>
+            <button class="btn btn-small btn-text" id="dismiss-error-btn">
+              Dismiss
+            </button>
+          </div>
+        </div>
+
+        <div class="history-section hidden" id="history-section">
+          <div class="section-header">
+            <h3>Recent Operations</h3>
+            <button
+              class="btn-icon-small"
+              id="clear-history-btn"
+              title="Clear history"
+            >
+              🗑️
+            </button>
+          </div>
+          <div class="history-list" id="history-list"></div>
+        </div>
+
+        <div class="logs-section hidden" id="logs-section">
+          <div class="section-header">
+            <h3>Logs</h3>
+            <div class="log-controls">
+              <select id="log-level-filter" class="log-filter">
+                <option value="all">All Levels</option>
+                <option value="debug">Debug</option>
+                <option value="info">Info</option>
+                <option value="warn">Warn</option>
+                <option value="error">Error</option>
+              </select>
+              <button
+                class="btn-icon-small"
+                id="export-logs-btn"
+                title="Export logs"
+              >
+                📋
+              </button>
+              <button
+                class="btn-icon-small"
+                id="clear-logs-btn"
+                title="Clear logs"
+              >
+                🗑️
+              </button>
+              <button
+                class="btn-icon-small"
+                id="toggle-logs-btn"
+                title="Toggle logs"
+              >
+                ▼
+              </button>
+            </div>
+          </div>
+          <div class="logs-container" id="logs-container"></div>
+        </div>
+
+        <div class="quick-settings">
+          <label class="toggle-label">
+            <input type="checkbox" id="auto-solve-toggle" />
+            <span class="toggle-slider"></span>
+            <span class="toggle-text">Auto-solve quizzes</span>
+          </label>
+          <label class="toggle-label">
+            <input type="checkbox" id="auto-watch-toggle" />
+            <span class="toggle-slider"></span>
+            <span class="toggle-text">Auto-watch videos</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="footer">
+        <a href="#" id="options-link" class="link">Settings</a>
+        <span class="separator">•</span>
+        <a href="#" id="help-link" class="link">Help</a>
+      </div>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

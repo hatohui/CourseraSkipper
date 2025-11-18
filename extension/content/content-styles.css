@@ -1,0 +1,343 @@
+/* Content Script Styles */
+
+.cs-floating-button {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 50px;
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  z-index: 10000;
+  transition: all 0.3s ease;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cs-floating-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.5);
+}
+
+.cs-floating-button:active {
+  transform: translateY(0);
+}
+
+.cs-icon {
+  font-size: 18px;
+}
+
+.cs-progress-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10001;
+  backdrop-filter: blur(4px);
+}
+
+.cs-progress-modal.cs-hidden {
+  display: none;
+}
+
+.cs-modal-content {
+  background: white;
+  border-radius: 12px;
+  padding: 0;
+  width: 90%;
+  max-width: 500px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: cs-modal-appear 0.3s ease;
+}
+
+@keyframes cs-modal-appear {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.cs-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.cs-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cs-modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.cs-status-badge {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.cs-status-idle {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.cs-status-running {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.cs-status-completed {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.cs-status-error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.cs-status-paused {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.cs-header-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.cs-minimize-btn,
+.cs-close-button {
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.cs-minimize-btn:hover,
+.cs-close-button:hover {
+  background: #f3f4f6;
+}
+
+.cs-modal-content.cs-minimized .cs-modal-body {
+  display: none;
+}
+
+.cs-modal-body {
+  padding: 24px;
+}
+
+.cs-progress-section {
+  margin-bottom: 20px;
+}
+
+.cs-progress-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.cs-progress-percentage {
+  font-size: 18px;
+  font-weight: 600;
+  color: #667eea;
+}
+
+.cs-progress-eta {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.cs-progress-bar {
+  width: 100%;
+  height: 8px;
+  background: #e5e7eb;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.cs-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+  width: 0%;
+}
+
+.cs-progress-message {
+  margin: 0;
+  color: #4b5563;
+  font-size: 13px;
+  font-style: italic;
+}
+
+/* Logs Section */
+.cs-logs-section {
+  border-top: 1px solid #e5e7eb;
+  padding-top: 16px;
+}
+
+.cs-logs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.cs-logs-header h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.cs-logs-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.cs-log-filter {
+  padding: 4px 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  font-size: 12px;
+  background: white;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.cs-toggle-logs {
+  background: #f3f4f6;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.cs-toggle-logs:hover {
+  background: #e5e7eb;
+}
+
+.cs-logs-container {
+  max-height: 200px;
+  overflow-y: auto;
+  background: #1f2937;
+  border-radius: 6px;
+  padding: 12px;
+  font-family: "Consolas", "Monaco", "Courier New", monospace;
+  font-size: 11px;
+  transition: max-height 0.3s;
+}
+
+.cs-logs-container.cs-collapsed {
+  max-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.cs-log-entry {
+  padding: 4px 0;
+  line-height: 1.5;
+  word-wrap: break-word;
+}
+
+.cs-log-time {
+  color: #9ca3af;
+  margin-right: 8px;
+}
+
+.cs-log-level {
+  font-weight: 600;
+  margin-right: 8px;
+}
+
+.cs-log-source {
+  color: #60a5fa;
+  margin-right: 8px;
+}
+
+.cs-log-message {
+  color: #e5e7eb;
+}
+
+.cs-log-info .cs-log-level {
+  color: #60a5fa;
+}
+
+.cs-log-warn .cs-log-level {
+  color: #f59e0b;
+}
+
+.cs-log-error .cs-log-level {
+  color: #ef4444;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .cs-modal-content {
+    background: #1f2937;
+  }
+
+  .cs-modal-header {
+    border-bottom-color: #374151;
+  }
+
+  .cs-modal-header h3 {
+    color: #f9fafb;
+  }
+
+  .cs-close-button {
+    color: #9ca3af;
+  }
+
+  .cs-close-button:hover {
+    background: #374151;
+  }
+
+  .cs-progress-bar {
+    background: #374151;
+  }
+
+  .cs-progress-message {
+    color: #d1d5db;
+  }
+}
