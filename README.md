@@ -5,10 +5,10 @@ A browser extension that helps you automatically complete Coursera course items 
 ## Currently Working Features
 
 | Feature                     | Status             | Description                                                                   |
-| --------------------------- | ------------------ | ----------------------------------------------------------------------------- | --- |
+| --------------------------- | ------------------ | ----------------------------------------------------------------------------- |
 | **Video Watching**          | ✅ Working         | Automatically completes video lectures by simulating play/progress/end events |
 | **Reading Completion**      | ✅ Working         | Marks reading materials and supplements as complete                           |
-| **Programming Assignments** | ✅ Working         | Completes graded LTI programming assignments with passing grade               |     |
+| **Programming Assignments** | ✅ Working         | Completes graded LTI programming assignments with passing grade               | 
 | **Quiz Solving**            | ⚠️ In Progress     | GraphQL-based quiz solver (solver logic exists, LLM integration pending)      |
 | **Peer Review**             | ❌ Not Implemented | Peer-graded assignments not yet supported                                     |
 
