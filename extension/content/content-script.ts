@@ -357,6 +357,10 @@ class ContentScript {
         icon = "📖";
         text = "Complete Reading";
         break;
+      case "programming":
+        icon = "💻";
+        text = "Complete Assignment";
+        break;
       default:
         icon = "⚡";
         text = "Skip";
@@ -382,7 +386,7 @@ class ContentScript {
       this.showProgressModal();
       this.updateProgress(0, "Starting...");
 
-      if (itemType === "quiz" || itemType === "programming") {
+      if (itemType === "quiz") {
         // Start solver
         const message = createMessage("START_SOLVER", {
           courseId,
@@ -394,6 +398,40 @@ class ContentScript {
         if (!response.success) {
           throw new Error(response.error || "Failed to start solver");
         }
+      } else if (itemType === "programming") {
+        // Handle programming assignment with graded LTI
+        this.updateProgress(10, "Preparing programming assignment...");
+
+        const userId = await getUserId();
+        if (!userId) {
+          throw new Error(
+            "Could not get user ID. Please ensure you're logged in."
+          );
+        }
+
+        const fullCourseId = await getCourseId(courseId);
+        if (!fullCourseId) {
+          throw new Error("Could not get course ID");
+        }
+
+        this.updateProgress(30, "Completing programming assignment...");
+
+        const message = createMessage("START_GRADED_LTI", {
+          courseId: fullCourseId,
+          itemId,
+          userId,
+        });
+
+        const response = await sendToBackground(message);
+        if (!response.success) {
+          throw new Error(response.error || "Failed to complete assignment");
+        }
+
+        this.updateProgress(100, "Programming assignment completed!");
+        setTimeout(() => {
+          this.hideProgressModal();
+          window.location.reload();
+        }, 2000);
       } else if (itemType === "video") {
         // Start watcher - fetch complete metadata first
         this.updateProgress(10, "Fetching video metadata...");

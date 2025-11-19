@@ -24,6 +24,7 @@ import {
 import { GradedSolver } from "../../feats/assetments/solver";
 import { Watcher } from "../../feats/watcher/watcher";
 import { GraphQLClient } from "../../feats/assetments/graphql-client";
+import { GradedLtiHandler } from "../../feats/gradedlti/graded-lti";
 import {
   getModuleData,
   ModuleData,
@@ -72,6 +73,7 @@ class BackgroundService {
         STOP_SOLVER: this.handleStopSolver.bind(this),
         START_WATCHER: this.handleStartWatcher.bind(this),
         STOP_WATCHER: this.handleStopWatcher.bind(this),
+        START_GRADED_LTI: this.handleStartGradedLti.bind(this),
         START_MODULE_SKIP: this.handleStartModuleSkip.bind(this),
         GET_STATUS: this.handleGetStatus.bind(this),
         COURSE_DETECTED: this.handleCourseDetected.bind(this),
@@ -407,6 +409,43 @@ class BackgroundService {
     return { success: true };
   }
 
+  private async handleStartGradedLti(
+    message: Message,
+    sender?: chrome.runtime.MessageSender
+  ): Promise<MessageResponse> {
+    const msg = message as any;
+    const { courseId, itemId, userId } = msg;
+
+    try {
+      info("Starting graded LTI handler", { courseId, itemId, userId });
+
+      if (!courseId || !itemId || !userId) {
+        throw new Error("Missing required parameters for graded LTI");
+      }
+
+      // Create handler and complete the item
+      const handler = new GradedLtiHandler({
+        courseId,
+        itemId,
+        userId,
+      });
+
+      await handler.completeItem();
+
+      info("Graded LTI completed", { itemId });
+
+      return {
+        success: true,
+      };
+    } catch (err: any) {
+      error("Failed to complete graded LTI", err);
+      return {
+        success: false,
+        error: err.message || "Failed to complete programming assignment",
+      };
+    }
+  }
+
   private async handleStartModuleSkip(
     message: Message,
     sender?: chrome.runtime.MessageSender
@@ -568,16 +607,45 @@ class BackgroundService {
         info("All readings processed", { count: readings.length });
       }
 
-      // Log quizzes and programming assignments (not yet implemented)
-      if (quizzes.length > 0) {
-        info("Quiz items detected, skipping for now", {
-          count: quizzes.length,
+      // Process programming assignments (graded LTI) concurrently
+      if (programming.length > 0) {
+        this.updateTaskProgress(
+          taskKey,
+          Math.round((completedCount / totalItems) * 100),
+          `Processing ${programming.length} programming assignments concurrently...`
+        );
+
+        const programmingPromises = programming.map(async (item) => {
+          try {
+            await this.processGradedLtiItem(courseId, item.id, userId);
+            completedCount++;
+            if (task.moduleData) {
+              task.moduleData.completedItems = completedCount;
+            }
+            const progress = Math.round((completedCount / totalItems) * 100);
+            this.updateTaskProgress(
+              taskKey,
+              progress,
+              `Completed programming: ${item.name} (${completedCount}/${totalItems})`
+            );
+          } catch (itemError: any) {
+            warn("Failed to process programming assignment", {
+              itemId: item.id,
+              error: itemError.message,
+            });
+          }
+        });
+
+        await Promise.allSettled(programmingPromises);
+        info("All programming assignments processed", {
+          count: programming.length,
         });
       }
 
-      if (programming.length > 0) {
-        info("Programming items detected, skipping for now", {
-          count: programming.length,
+      // Log quizzes (not yet implemented)
+      if (quizzes.length > 0) {
+        info("Quiz items detected, skipping for now", {
+          count: quizzes.length,
         });
       }
 
@@ -673,6 +741,23 @@ class BackgroundService {
     }
 
     info("Reading item completed", { itemId });
+  }
+
+  private async processGradedLtiItem(
+    courseId: string,
+    itemId: string,
+    userId: string
+  ): Promise<void> {
+    info("Processing graded LTI item (programming assignment)", { itemId });
+
+    const handler = new GradedLtiHandler({
+      courseId,
+      itemId,
+      userId,
+    });
+
+    await handler.completeItem();
+    info("Graded LTI item completed", { itemId });
   }
 
   private async handleGetStatus(message: Message): Promise<MessageResponse> {
