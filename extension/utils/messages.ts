@@ -10,6 +10,7 @@ export type MessageType =
   | "STOP_WATCHER"
   | "START_GRADED_LTI"
   | "START_MODULE_SKIP"
+  | "START_ALL_MODULES_SKIP"
   | "GET_STATUS"
   | "UPDATE_PROGRESS"
   | "PROGRESS_UPDATE"
@@ -169,6 +170,13 @@ export interface StartGradedLtiMessage extends BaseMessage {
   userId: string;
 }
 
+export interface StartAllModulesSkipMessage extends BaseMessage {
+  type: "START_ALL_MODULES_SKIP";
+  courseId: string;
+  courseSlug: string;
+  allModules: any[];
+}
+
 export type Message =
   | StartSolverMessage
   | StopSolverMessage
@@ -176,6 +184,7 @@ export type Message =
   | StopWatcherMessage
   | StartGradedLtiMessage
   | StartModuleSkipMessage
+  | StartAllModulesSkipMessage
   | GetStatusMessage
   | UpdateProgressMessage
   | ProgressUpdateMessage

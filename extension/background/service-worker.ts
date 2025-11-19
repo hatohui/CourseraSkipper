@@ -75,6 +75,7 @@ class BackgroundService {
         STOP_WATCHER: this.handleStopWatcher.bind(this),
         START_GRADED_LTI: this.handleStartGradedLti.bind(this),
         START_MODULE_SKIP: this.handleStartModuleSkip.bind(this),
+        START_ALL_MODULES_SKIP: this.handleStartAllModulesSkip.bind(this),
         GET_STATUS: this.handleGetStatus.bind(this),
         COURSE_DETECTED: this.handleCourseDetected.bind(this),
         LOG: this.handleLog.bind(this),
@@ -511,6 +512,229 @@ class BackgroundService {
         success: false,
         error: err.message || "Failed to start module skip",
       };
+    }
+  }
+
+  private async handleStartAllModulesSkip(
+    message: Message,
+    sender?: chrome.runtime.MessageSender
+  ): Promise<MessageResponse> {
+    const msg = message as any;
+    const { courseId, courseSlug, allModules } = msg;
+
+    try {
+      const tabId = sender?.tab?.id || 0;
+
+      info("Starting all modules skip", {
+        courseSlug,
+        moduleCount: allModules?.length,
+        tabId,
+      });
+
+      if (!courseId || !courseSlug || !allModules) {
+        throw new Error("Missing required parameters");
+      }
+
+      const taskKey = `all-modules-${courseSlug}`;
+
+      // Check if already running
+      if (this.activeTasks.has(taskKey)) {
+        return {
+          success: false,
+          error: "All modules skip already running",
+        };
+      }
+
+      // Calculate total items
+      const totalItems = allModules.reduce(
+        (sum: number, m: ModuleData) => sum + m.counts.total,
+        0
+      );
+
+      // Create task
+      const task: ActiveTask = {
+        type: "module",
+        tabId,
+        courseId,
+        itemId: "all-modules",
+        status: "running",
+        progress: 0,
+        message: "Starting all modules skip...",
+        startTime: Date.now(),
+        moduleData: {
+          moduleNumber: 0,
+          courseSlug,
+          totalItems,
+          completedItems: 0,
+        },
+      };
+      this.activeTasks.set(taskKey, task);
+
+      // Update badge
+      this.updateBadge();
+
+      // Process all modules asynchronously
+      this.processAllModules(taskKey, courseSlug, courseId, allModules).catch(
+        (err) => {
+          error("All modules skip error", err);
+          this.updateTaskStatus(taskKey, "error", err.message);
+        }
+      );
+
+      return {
+        success: true,
+        data: { taskKey },
+      };
+    } catch (err: any) {
+      error("Failed to start all modules skip", err);
+      return {
+        success: false,
+        error: err.message || "Failed to start all modules skip",
+      };
+    }
+  }
+
+  private async processAllModules(
+    taskKey: string,
+    courseSlug: string,
+    courseId: string,
+    allModules: ModuleData[]
+  ): Promise<void> {
+    const task = this.activeTasks.get(taskKey);
+    if (!task || !task.moduleData) return;
+
+    try {
+      // Get user ID
+      const userId = await getUserId();
+      if (!userId) {
+        throw new Error("Could not get user ID");
+      }
+
+      const totalItems = task.moduleData.totalItems;
+      let completedItems = 0;
+
+      // Process each module
+      for (let i = 0; i < allModules.length; i++) {
+        const moduleData = allModules[i];
+
+        this.updateTaskProgress(
+          taskKey,
+          Math.round((completedItems / totalItems) * 100),
+          `Processing Module ${i + 1}/${allModules.length}: ${moduleData.name}`
+        );
+
+        // Process all items in this module concurrently
+        const items = moduleData.items;
+
+        // Separate by type
+        const videos = items.filter((item) => item.type === "video");
+        const readings = items.filter((item) => item.type === "reading");
+        const programming = items.filter((item) => item.type === "programming");
+
+        // Process videos
+        if (videos.length > 0) {
+          const videoPromises = videos.map(async (item) => {
+            try {
+              await this.processVideoItem(courseSlug, courseId, item, userId);
+              completedItems++;
+              if (task.moduleData) {
+                task.moduleData.completedItems = completedItems;
+              }
+            } catch (err: any) {
+              warn("Failed to process video", {
+                itemId: item.id,
+                error: err.message,
+              });
+            }
+          });
+          await Promise.allSettled(videoPromises);
+        }
+
+        // Process readings
+        if (readings.length > 0) {
+          const readingPromises = readings.map(async (item) => {
+            try {
+              await this.processReadingItem(courseId, item.id, userId);
+              completedItems++;
+              if (task.moduleData) {
+                task.moduleData.completedItems = completedItems;
+              }
+            } catch (err: any) {
+              warn("Failed to process reading", {
+                itemId: item.id,
+                error: err.message,
+              });
+            }
+          });
+          await Promise.allSettled(readingPromises);
+        }
+
+        // Process programming
+        if (programming.length > 0) {
+          const programmingPromises = programming.map(async (item) => {
+            try {
+              await this.processGradedLtiItem(courseId, item.id, userId);
+              completedItems++;
+              if (task.moduleData) {
+                task.moduleData.completedItems = completedItems;
+              }
+            } catch (err: any) {
+              warn("Failed to process programming", {
+                itemId: item.id,
+                error: err.message,
+              });
+            }
+          });
+          await Promise.allSettled(programmingPromises);
+        }
+
+        this.updateTaskProgress(
+          taskKey,
+          Math.round((completedItems / totalItems) * 100),
+          `Completed Module ${i + 1}/${allModules.length}`
+        );
+      }
+
+      // Mark as completed
+      this.updateTaskStatus(
+        taskKey,
+        "completed",
+        `All modules completed! Processed ${completedItems}/${totalItems} items`
+      );
+
+      info("All modules skip completed", {
+        taskKey,
+        completedItems,
+        totalItems,
+      });
+
+      // Notify content script
+      if (task.tabId && task.tabId > 0) {
+        const completionMsg = createMessage("ITEM_COMPLETED", {
+          courseId: task.courseId,
+          itemId: task.itemId,
+          success: true,
+        });
+        sendToTab(task.tabId, completionMsg).catch(() => {
+          // Ignore if tab is closed
+        });
+      }
+
+      // Show completion notification
+      try {
+        await showCompletionNotification("module");
+      } catch (notifErr) {
+        // Ignore notification errors
+      }
+    } catch (err: any) {
+      error("All modules processing failed", err);
+      this.updateTaskStatus(taskKey, "error", err.message);
+
+      try {
+        await showErrorNotification("All modules skip failed", err.message);
+      } catch (notifErr) {
+        // Ignore notification errors
+      }
     }
   }
 

@@ -481,3 +481,124 @@ export async function getModuleData(
     return null;
   }
 }
+
+/**
+ * Get all course modules data
+ */
+export async function getAllModulesData(
+  courseSlug: string
+): Promise<ModuleData[]> {
+  try {
+    console.log("[CourseraAPI] Fetching all modules data:", { courseSlug });
+
+    // First get user ID
+    const userId = await getUserId();
+    if (!userId) {
+      console.error("[CourseraAPI] Could not get user ID");
+      return [];
+    }
+
+    // Get course ID
+    const courseId = await getCourseId(courseSlug);
+    if (!courseId) {
+      console.error("[CourseraAPI] Could not get course ID");
+      return [];
+    }
+
+    // Get guided course progress
+    const progressData = await getGuidedCourseProgress(userId, courseId);
+    if (
+      !progressData ||
+      !progressData.elements ||
+      progressData.elements.length === 0
+    ) {
+      console.error("[CourseraAPI] No progress data found");
+      return [];
+    }
+
+    const courseProgress = progressData.elements[0];
+    if (!courseProgress.weeks || !Array.isArray(courseProgress.weeks)) {
+      console.error("[CourseraAPI] No weeks data in progress");
+      return [];
+    }
+
+    const allModules: ModuleData[] = [];
+
+    // Process each week/module
+    for (
+      let weekIndex = 0;
+      weekIndex < courseProgress.weeks.length;
+      weekIndex++
+    ) {
+      const week = courseProgress.weeks[weekIndex];
+      const modules = week.modules || [];
+
+      if (modules.length === 0) continue;
+
+      const allItems: ModuleItemSummary[] = [];
+      const counts = {
+        quiz: 0,
+        video: 0,
+        reading: 0,
+        programming: 0,
+        "peer-review": 0,
+        total: 0,
+      };
+
+      let moduleName = `Week ${weekIndex + 1}`;
+      let moduleId = "";
+
+      for (const module of modules) {
+        if (module.name) {
+          moduleName = module.name;
+        }
+        if (module.id) {
+          moduleId = module.id;
+        }
+
+        const items = module.items || [];
+
+        for (const item of items) {
+          const typeName = item.contentSummary?.typeName || "";
+          const resourcePath = item.resourcePath || "";
+          const type = detectItemType(typeName, resourcePath);
+
+          // Update counts
+          if (type === "quiz") counts.quiz++;
+          else if (type === "video") counts.video++;
+          else if (type === "reading") counts.reading++;
+          else if (type === "programming") counts.programming++;
+          else if (type === "peer-review") counts["peer-review"]++;
+
+          counts.total++;
+
+          allItems.push({
+            id: item.id || item.trackId,
+            name: item.name || "Untitled",
+            slug: item.slug || "",
+            type,
+            timeCommitment: item.timeCommitment || 0,
+          });
+        }
+      }
+
+      allModules.push({
+        moduleId: moduleId,
+        name: moduleName,
+        slug: "",
+        items: allItems,
+        counts,
+      });
+    }
+
+    console.log("[CourseraAPI] All modules data processed:", {
+      totalModules: allModules.length,
+      totalItems: allModules.reduce((sum, m) => sum + m.counts.total, 0),
+    });
+
+    return allModules;
+  } catch (error) {
+    console.error("[CourseraAPI] Error getting all modules data:", error);
+    return [];
+  }
+}

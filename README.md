@@ -1,138 +1,76 @@
 # Coursera Skipper
 
-> A browser extension to skip unwanted sections (readings, videos, quizzes) in Coursera courses
+A browser extension that helps you automatically complete Coursera course items including videos, readings, quizzes, and programming assignments.
 
-## 🚧 Project Status: Migration in Progress
+## Currently Working Features
 
-This project is being migrated from Python to TypeScript for use as a browser extension.
+| Feature                     | Status             | Description                                                                   |
+| --------------------------- | ------------------ | ----------------------------------------------------------------------------- | --- |
+| **Video Watching**          | ✅ Working         | Automatically completes video lectures by simulating play/progress/end events |
+| **Reading Completion**      | ✅ Working         | Marks reading materials and supplements as complete                           |
+| **Programming Assignments** | ✅ Working         | Completes graded LTI programming assignments with passing grade               |     |
+| **Quiz Solving**            | ⚠️ In Progress     | GraphQL-based quiz solver (solver logic exists, LLM integration pending)      |
+| **Peer Review**             | ❌ Not Implemented | Peer-graded assignments not yet supported                                     |
 
-### Current Implementation
+## Performance
 
-- ✅ Python implementation (reference in `feats/`)
-- ⏳ TypeScript browser extension (in progress)
+- **Single Video**: ~3 seconds
+- **Single Reading**: ~1 second
+- **Single Programming Assignment**: ~3 seconds
+- **Module with 10 videos + 5 readings + 3 programming**: ~4 seconds (concurrent processing)
 
-## 📁 Project Structure
+## Installation
+
+1. Clone this repository
+2. Run `npm install`
+3. Run `npm run build`
+4. Load the `dist` folder as an unpacked extension in Chrome
+
+## Usage
+
+### Individual Items
+
+Navigate to any course item (video, reading, programming assignment) and click the floating button:
+
+- 📹 Videos: "Watch Video" button
+- 📖 Readings: "Complete Reading" button
+- 💻 Programming: "Complete Assignment" button
+- ✓ Quizzes: "Solve Quiz" button (in progress)
+
+### Module Skip
+
+1. Navigate to a module overview page (`/home/module/{number}`)
+2. Click "Skip All Items" in the module skipper widget
+3. Watch as all items complete concurrently
+
+## Tech Stack
+
+- TypeScript
+- Chrome Extension APIs
+- Coursera REST & GraphQL APIs
+- Webpack for bundling
+
+## Project Structure
 
 ```
 CourseraSkipper/
-├── .github/
-│   └── instructions/          # Development instructions
-├── requirements/              # Implementation tasks (START HERE)
-├── feats/
-│   ├── assetments/           # Quiz/assignment solver
-│   ├── llm/                  # LLM integration
-│   └── watcher/              # Video watcher
-└── extension/                # Browser extension (to be created)
+├── extension/           # Browser extension files
+│   ├── background/      # Service worker
+│   ├── content/         # Content scripts
+│   ├── popup/           # Extension popup
+│   └── utils/           # Shared utilities
+├── feats/              # Feature modules
+│   ├── assetments/     # Quiz solver
+│   ├── watcher/        # Video watcher
+│   ├── gradedlti/      # Programming assignments
+│   └── llm/            # LLM connector
+└── types/              # TypeScript type definitions
 ```
 
-## 🎯 Features (Planned)
+## Contributing
 
-- ✅ Auto-solve quizzes and assignments using AI
-- ✅ Auto-complete video lectures
-- ✅ Skip reading materials
-- 🔄 Browser extension interface
-- 🔄 Configurable LLM backend (Perplexity, OpenAI, Claude)
+This is an open-source project. Feel free to submit issues and pull requests.
 
-## 🚀 Getting Started for Developers
+## License
 
-### Quick Start (3 Steps)
-
-1. **📖 Read the Quick Start Guide**
-
-   ```bash
-   requirements/QUICKSTART.md
-   ```
-
-2. **📋 Review Requirements**
-
-   ```bash
-   requirements/README.md
-   requirements/00-overview.md
-   ```
-
-3. **✅ Start First Task**
-   ```bash
-   requirements/01-types-migration.md
-   ```
-
-### Full Documentation
-
-| Document                                        | Purpose                       |
-| ----------------------------------------------- | ----------------------------- |
-| [QUICKSTART.md](requirements/QUICKSTART.md)     | 5-minute intro to get started |
-| [README.md](requirements/README.md)             | Requirements overview         |
-| [00-overview.md](requirements/00-overview.md)   | Project architecture & status |
-| [PROGRESS.md](requirements/PROGRESS.md)         | Detailed progress tracking    |
-| [UPDATE_GUIDE.md](requirements/UPDATE_GUIDE.md) | How to update progress        |
-| [LOG_TEMPLATE.md](requirements/LOG_TEMPLATE.md) | Daily log template            |
-
-### Implementation Order
-
-Work through requirements sequentially:
-
-1. **Type Definitions** (`01-types-migration.md`) - 36 tasks
-2. **GraphQL Queries** (`02-queries-setup.md`) - 27 tasks
-3. **Assessment Solver** (`03-assessment-solver.md`) - 57 tasks
-4. **Video Watcher** (`04-video-watcher.md`) - 53 tasks
-5. **LLM Connector** (`05-llm-connector.md`) - 60 tasks
-6. **Extension Setup** (`06-extension-setup.md`) - 91 tasks
-7. **Integration & Testing** (`07-integration-testing.md`) - 68 tasks
-
-**Total: 392 tasks**
-
-## 🔧 Python Reference Implementation
-
-The Python version is located in `feats/` and serves as a reference for the TypeScript implementation.
-
-### Key Components:
-
-- **Assessment Solver** (`feats/assetments/solver.py`) - Auto-solves quizzes
-- **Video Watcher** (`feats/watcher/watcher.py`) - Auto-completes videos
-- **LLM Connector** (`feats/llm/connector.py`) - AI integration
-
-## 📝 Migration Guidelines
-
-### Python → TypeScript Mapping
-
-```
-requests.Session     → fetch API / axios
-Pydantic models      → TypeScript interfaces
-Optional[T]          → T | null | undefined
-dict                 → Record<string, T>
-List[T]              → T[]
-```
-
-### Browser Extension Adaptation
-
-- Use Chrome Extension APIs
-- Handle authentication via cookies
-- Store settings in Chrome Storage
-- Inject content scripts on Coursera pages
-
-## 📚 Documentation
-
-- [Project Instructions](.github/instructions/init.instructions.md) - Main guidelines
-- [Requirements Overview](requirements/00-overview.md) - Migration status
-- [Requirements README](requirements/README.md) - Task tracking guide
-
-## 🤝 Contributing
-
-1. Read the instructions in `.github/instructions/`
-2. Pick a task from `/requirements/`
-3. Implement following the Python reference
-4. Check off completed tasks
-5. Submit PR with updated checkboxes
-
-## ⚠️ Disclaimer
-
-This tool is for educational purposes. Use responsibly and in accordance with Coursera's terms of service.
-
-## 📄 License
-
-[Add your license here]
-
----
-
-**Status**: 🔨 Active development - TypeScript migration in progress
-
-For detailed implementation tasks, see [`requirements/README.md`](requirements/README.md)
+MIT

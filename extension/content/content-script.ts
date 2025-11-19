@@ -29,6 +29,7 @@ import {
   generateCsrfToken,
   markReadingComplete,
   getModuleData,
+  getAllModulesData,
   ModuleData,
 } from "../utils/coursera-api";
 import { saveSessionToken } from "../utils/storage";
@@ -81,12 +82,8 @@ class ContentScript {
 
     // Inject UI on actionable item pages (including module overview)
     if (isActionableCourseItem()) {
-      if (isModulePage()) {
-        // Handle module page differently
-        this.handleModulePage();
-      } else {
-        this.injectUI();
-      }
+      // Always inject the floating button for all actionable pages
+      this.injectUI();
     } else {
       console.log("[Coursera Skipper] Non-actionable page - no UI injected");
     }
@@ -187,11 +184,15 @@ class ContentScript {
     const button = document.createElement("div");
     button.id = "coursera-skipper-button";
     button.className = "cs-floating-button";
+
+    // Check if we're on a module page
+    const isModule = isModulePage();
+    const icon = isModule ? "📚" : "⚡";
+    const text = isModule ? "Skip Module" : "Skip";
+
     button.innerHTML = `
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M8 5v14l11-7z" fill="currentColor"/>
-      </svg>
-      <span>Skip</span>
+      <span class="cs-icon">${icon}</span>
+      <span>${text}</span>
     `;
 
     button.addEventListener("click", () => this.handleButtonClick());
@@ -381,6 +382,12 @@ class ContentScript {
     }
 
     const { courseId, itemId, itemType } = this.currentCourseInfo;
+
+    // Handle module pages differently
+    if (itemType === "module") {
+      this.handleModulePage();
+      return;
+    }
 
     try {
       this.showProgressModal();
@@ -785,9 +792,13 @@ class ContentScript {
           </div>
           <button class="cs-module-skip-btn">
             <span class="cs-btn-icon">⚡</span>
-            <span class="cs-btn-text">Skip All Items</span>
+            <span class="cs-btn-text">Skip This Module</span>
           </button>
-          <p class="cs-module-note">This will automatically complete all items in this module</p>
+          <button class="cs-module-skip-all-btn">
+            <span class="cs-btn-icon">🚀</span>
+            <span class="cs-btn-text">Skip ALL Course Modules</span>
+          </button>
+          <p class="cs-module-note">Automatically complete items in this module or the entire course</p>
         </div>
       </div>
     `;
@@ -920,9 +931,9 @@ class ContentScript {
         font-weight: 500;
       }
       
-      .cs-module-skip-btn {
+      .cs-module-skip-btn,
+      .cs-module-skip-all-btn {
         width: 100%;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
         border: none;
         padding: 14px 20px;
@@ -938,16 +949,27 @@ class ContentScript {
         margin-bottom: 12px;
       }
       
-      .cs-module-skip-btn:hover {
+      .cs-module-skip-btn {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      }
+      
+      .cs-module-skip-all-btn {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      }
+      
+      .cs-module-skip-btn:hover,
+      .cs-module-skip-all-btn:hover {
         transform: translateY(-2px);
         box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
       }
       
-      .cs-module-skip-btn:active {
+      .cs-module-skip-btn:active,
+      .cs-module-skip-all-btn:active {
         transform: translateY(0);
       }
       
-      .cs-module-skip-btn:disabled {
+      .cs-module-skip-btn:disabled,
+      .cs-module-skip-all-btn:disabled {
         opacity: 0.6;
         cursor: not-allowed;
         transform: none;
@@ -976,6 +998,11 @@ class ContentScript {
     const skipBtn = widget.querySelector(".cs-module-skip-btn");
     skipBtn?.addEventListener("click", () => {
       this.startModuleSkip(courseId, moduleNumber);
+    });
+
+    const skipAllBtn = widget.querySelector(".cs-module-skip-all-btn");
+    skipAllBtn?.addEventListener("click", () => {
+      this.startAllModulesSkip(courseId);
     });
 
     document.body.appendChild(widget);
@@ -1065,6 +1092,91 @@ class ContentScript {
         skipBtn.innerHTML = `
           <span class="cs-btn-icon">⚡</span>
           <span class="cs-btn-text">Skip All Items</span>
+        `;
+      }
+    }
+  }
+
+  private async startAllModulesSkip(courseSlug: string) {
+    console.log("[Coursera Skipper] Starting ALL modules skip", {
+      courseSlug,
+    });
+
+    const confirmSkip = confirm(
+      "⚠️ This will skip ALL modules in the entire course!\n\nAre you sure you want to continue?"
+    );
+
+    if (!confirmSkip) {
+      return;
+    }
+
+    // Disable both buttons
+    const widget = document.querySelector(".cs-module-skip-widget");
+    const skipBtn = widget?.querySelector(
+      ".cs-module-skip-btn"
+    ) as HTMLButtonElement;
+    const skipAllBtn = widget?.querySelector(
+      ".cs-module-skip-all-btn"
+    ) as HTMLButtonElement;
+
+    if (skipBtn) skipBtn.disabled = true;
+    if (skipAllBtn) {
+      skipAllBtn.disabled = true;
+      skipAllBtn.innerHTML = `
+        <span class="cs-spinner" style="width: 18px; height: 18px; border-width: 2px;"></span>
+        <span>Processing All Modules...</span>
+      `;
+    }
+
+    try {
+      // Get course ID
+      const courseId = await getCourseId(courseSlug);
+      if (!courseId) {
+        throw new Error("Could not get course ID");
+      }
+
+      // Get all modules data
+      const allModules = await getAllModulesData(courseSlug);
+      if (!allModules || allModules.length === 0) {
+        throw new Error("Could not fetch modules data");
+      }
+
+      console.log("[Coursera Skipper] Processing all modules:", {
+        totalModules: allModules.length,
+        totalItems: allModules.reduce((sum, m) => sum + m.counts.total, 0),
+      });
+
+      // Show progress modal
+      this.showProgressModal();
+
+      // Send message to background to start all modules skip
+      const message = createMessage<any>("START_ALL_MODULES_SKIP", {
+        courseId,
+        courseSlug,
+        allModules,
+      });
+
+      const response = await sendToBackground(message);
+
+      if (response.success) {
+        console.log("[Coursera Skipper] All modules skip started");
+      } else {
+        throw new Error(response.error || "Failed to start all modules skip");
+      }
+    } catch (error: any) {
+      console.error(
+        "[Coursera Skipper] Error starting all modules skip:",
+        error
+      );
+      alert("Failed to start all modules skip: " + error.message);
+
+      // Re-enable buttons
+      if (skipBtn) skipBtn.disabled = false;
+      if (skipAllBtn) {
+        skipAllBtn.disabled = false;
+        skipAllBtn.innerHTML = `
+          <span class="cs-btn-icon">🚀</span>
+          <span class="cs-btn-text">Skip ALL Course Modules</span>
         `;
       }
     }
